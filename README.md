@@ -62,3 +62,30 @@ iiot_platform/
 - [ ] Schemas PostgreSQL
 - [ ] Next.js frontend
 - [ ] Cloudflare Tunnel (produção)
+
+## Manutenção Automática
+
+### Partições de Telemetria
+
+O sistema cria automaticamente partições mensais para a tabela `telemetry`.
+
+**Cron Job Configurado:**
+- **Quando**: Todo dia 1º do mês às 02:00
+- **O que faz**: Cria próximas 3 partições futuras
+- **Script**: `database/maintenance/run_partition_maintenance.sh`
+- **Log**: `/var/log/iiot_partition_maintenance.log`
+
+**Verificar log:**
+```bash
+cat /var/log/iiot_partition_maintenance.log
+```
+
+**Executar manualmente:**
+```bash
+./database/maintenance/run_partition_maintenance.sh
+```
+
+**Ver partições existentes:**
+```bash
+docker exec -it iiot_postgres psql -U admin -d iiot_platform -c "SELECT tablename FROM pg_tables WHERE tablename LIKE 'telemetry_%' ORDER BY tablename;"
+```
