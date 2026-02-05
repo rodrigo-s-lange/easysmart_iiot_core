@@ -53,6 +53,26 @@ services:
     networks:
       - iiot_network
 
+  nextjs:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: iiot_nextjs
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - POSTGRES_HOST=iiot_postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=iiot_platform
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=0039
+      - API_SECRET=your-webhook-secret-here
+    networks:
+      - iiot_network
+    depends_on:
+      - postgres
+
 volumes:
   postgres_data:
   redis_data:
