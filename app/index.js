@@ -53,9 +53,10 @@ app.post('/api/telemetry', async (req, res) => {
 
     // Insert telemetry
     await pool.query(
-      'INSERT INTO telemetry (device_id, slot, value, timestamp) VALUES ($1, $2, $3, $4)',
-      [deviceId, slot, payload, timestamp ? new Date(Number(timestamp)).toISOString() : new Date().toISOString()]
-    );
+  'INSERT INTO telemetry (device_id, slot, value, timestamp) VALUES ($1, $2, $3, $4)',
+  [deviceId, slot, payload.value || payload, timestamp ? new Date(Number(timestamp)).toISOString() : new Date().toISOString()]
+);
+console.log('✓ Inserted:', { device_id: deviceId, slot, value: payload.value || payload });
 
     res.status(201).json({ 
       success: true, 
