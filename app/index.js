@@ -23,6 +23,7 @@ app.get('/health', (req, res) => {
 app.post('/api/telemetry', async (req, res) => {
   try {
     const { clientid, topic, payload, timestamp } = req.body;
+    console.log('Received webhook:', JSON.stringify(req.body, null, 2));
 
     // Validate required fields
     if (!topic || !payload) {
@@ -53,7 +54,7 @@ app.post('/api/telemetry', async (req, res) => {
     // Insert telemetry
     await pool.query(
       'INSERT INTO telemetry (device_id, slot, value, timestamp) VALUES ($1, $2, $3, $4)',
-      [deviceId, slot, payload, timestamp || new Date().toISOString()]
+      [deviceId, slot, payload, timestamp ? new Date(Number(timestamp)).toISOString() : new Date().toISOString()]
     );
 
     res.status(201).json({ 
