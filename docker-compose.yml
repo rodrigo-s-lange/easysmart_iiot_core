@@ -16,6 +16,11 @@ services:
       - ./database/init:/docker-entrypoint-initdb.d
     networks:
       - iiot_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d iiot_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -35,41 +40,20 @@ services:
     ports:
       - "1883:1883"
       - "8083:8083"
-      - "8883:8883"
       - "8084:8084"
       - "18083:18083"
-    environment:
-      - EMQX_NAME=emqx
-      - EMQX_HOST=node1.emqx.local
-      - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
-      - EMQX_DASHBOARD__DEFAULT_PASSWORD=admin0039
     volumes:
+      - ./emqx/etc/emqx.conf:/opt/emqx/etc/emqx.conf:ro
       - emqx_data:/opt/emqx/data
       - emqx_log:/opt/emqx/log
     networks:
       - iiot_network
     depends_on:
-      - postgres
-
-  nextjs:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    container_name: iiot_nextjs
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
+      postgres:
+        condition: service_healthy
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=iiot_platform
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=0039
-      - API_SECRET=your-webhook-secret-here
-    networks:
-      - iiot_network
-    depends_on:
-      - postgres
+      - EMQX_NODE_NAME=emqx@127.0.0.1
+      - EMQX_LOADED_PLUGINS="emqx_dashboard"
 
 networks:
   iiot_network:
