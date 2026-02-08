@@ -163,6 +163,30 @@ Logs de bloqueio (Go API):
 - Mantém o último valor de cada device/slot no Redis.
 - Serve para telas que precisam mostrar estado atual sem esperar publish.
 
+## Provisionamento (planejado)
+
+**Objetivo:** devices saem de fábrica apenas com `device_id`. Eles sobem na rede como **unclaimed** e só passam a publicar após o usuário reclamar o device na plataforma.
+
+**Fluxo proposto (device_id apenas):**
+1. Device sobe e chama `GET /api/devices/bootstrap?device_id=...`.
+2. Se `status = inactive` → resposta “unclaimed” (sem secret).
+3. Usuário logado na plataforma insere `device_id` e reclama.
+4. Backend gera `device_secret` forte (32+ bytes), grava apenas `secret_hash` (bcrypt) e marca `status = active`.
+5. Device faz polling no bootstrap, recebe o `device_secret` (via TLS) e passa a autenticar:
+   - MQTT `username = device_id`
+   - MQTT `password = device_secret`
+
+**Segurança:**
+- `device_secret` nunca é salvo em texto no banco.
+- `device_secret` não existe antes do claim.
+- Se banco vazar, o atacante não consegue autenticar (hash forte + segredo longo).
+
+**Reset do device:**
+- Reset apaga o secret local e volta ao estado unclaimed.
+- O device só volta a publicar após novo claim pelo usuário.
+
+**Atenção:** Esse fluxo ainda não foi implementado no Go API/EMQX. Fica registrado aqui como plano oficial.
+
 ## Operações comuns
 
 **Reset mantendo device de teste**
