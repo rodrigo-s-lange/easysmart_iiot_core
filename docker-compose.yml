@@ -5,10 +5,8 @@ services:
     image: postgres:16-alpine
     container_name: iiot_postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: 0039
-      POSTGRES_DB: iiot_platform
+    env_file:
+      - .env
     ports:
       - "5432:5432"
     volumes:
@@ -37,6 +35,11 @@ services:
     image: emqx/emqx:5.5.0
     container_name: iiot_emqx
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "1883:1883"
       - "8083:8083"
@@ -52,6 +55,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - EMQX_NODE_NAME=emqx@127.0.0.1
       - EMQX_LOADED_PLUGINS="emqx_dashboard"
@@ -62,14 +67,18 @@ services:
       dockerfile: Dockerfile
     container_name: iiot_nextjs
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=iiot_platform
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=0039
     networks:
       - iiot_network
     depends_on:
@@ -85,4 +94,3 @@ volumes:
   redis_data:
   emqx_data:
   emqx_log:
-

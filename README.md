@@ -10,6 +10,23 @@ Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
 - **Express API** (3000): Webhooks de telemetria
 - **Cloudflare Tunnel**: WSS via `mqtt.easysmart.com.br:443`
 
+## Quebra Temporal (MVP vs Próximas Mudanças)
+
+**MVP Funcionando Hoje**
+- Ingestão MQTT com EMQX e autenticação via PostgreSQL
+- Telemetria persistida em PostgreSQL particionado
+- API Express recebendo webhook do Rule Engine
+- WSS via Cloudflare Tunnel
+- Backup/restore do EMQX
+
+**Vamos Começar a Mexer (Próxima Fase)**
+- Fortalecer auth (hash forte + tokens separados das credenciais)
+- ACLs por device/tenant no EMQX
+- Autenticação e rate limit na API
+- Segredos fora do Git (env/secrets)
+- Melhorias de escala: batch inserts + fila
+- Decidir timeseries: TimescaleDB ou alternativa
+
 ## Quick Start
 
 ```bash
@@ -221,17 +238,53 @@ iiot_platform/
 - ✅ Autenticação MQTT via PostgreSQL
 - ✅ SSL/TLS (Let's Encrypt)
 - ✅ Cloudflare Tunnel (não expõe IP)
-- ✅ Passwords em variáveis de ambiente
-- ⚠️ Authorization: `allow all` (TODO: implementar ACLs)
+- ✅ Secrets em `.env` (gitignored)
+- ✅ ACLs por device (EMQX Authorization via PostgreSQL)
 
 ## TODO
 
-- [ ] ACLs por device/tenant
+- [ ] ACLs por tenant (expansão)
 - [ ] Frontend dashboard (Next.js)
 - [ ] Comandos bidirecionais (MQTT publish)
 - [ ] Multi-tenancy
 - [ ] Sparkplug B
 - [ ] Grafana dashboards
+
+## Estado Atual (Importante para Continuidade)
+
+**Resumo do que foi implementado**
+- ACLs por device no EMQX via PostgreSQL: cada device só publica/assina `devices/<token>/#`
+- Autenticação MQTT via PostgreSQL (token como username/password)
+- `no_match = deny` em authorization
+- Logs do Docker com rotação (`max-size=10m`, `max-file=5`) no EMQX e API
+- `docker-compose.yml` usa `.env` via `env_file`
+
+**Arquivos-chave**
+- EMQX auth/ACL: `emqx/etc/emqx.conf`
+- Compose/log-rotation/env: `docker-compose.yml`
+- Secrets: `.env` (gitignored)
+
+**Comportamento esperado**
+- `mosquitto_sub` fica bloqueado aguardando mensagens (normal). Saída com `Ctrl+C`.
+- WSS via Cloudflare está OK (handshake HTTP 101 com `Sec-WebSocket-Protocol: mqtt`).
+
+**Nota sobre EMQX + PostgreSQL**
+- As queries em `emqx.conf` usam `${username}` dentro do SQL, sem aspas.
+- Esse formato está funcionando no ambiente atual. Alterações aqui podem quebrar auth.
+
+**Comandos de validação**
+```bash
+# Teste MQTT local
+mosquitto_sub -h 192.168.0.99 -p 1883 \
+  -u "TOKEN" -P "TOKEN" \
+  -t "devices/TOKEN/#" -v
+
+# Ver logs recentes
+docker logs iiot_emqx --since 5m
+
+# Reiniciar EMQX
+docker-compose restart emqx
+```
 
 ## Logs Importantes
 
@@ -262,4 +315,3 @@ sudo journalctl -u cloudflared -n 100
 - EMQX: 1M+ conexões simultâneas
 - PostgreSQL: Particionamento automático
 - API: Pool de 20 conexões
-
