@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type telemetryRequest struct {
@@ -40,6 +41,8 @@ func main() {
 	}
 	defer telemetryPool.Close()
 
+	limiter := newRateLimiter(ctx)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{
@@ -64,6 +67,22 @@ func main() {
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
 			return
+		}
+
+		if limiter != nil {
+			allowed, err := limiter.Allow(ctx, deviceToken, slot)
+			if err != nil {
+				if limiter.failOpen {
+					log.Printf("rate limit check failed (fail-open): %v", err)
+				} else {
+					writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Rate limiter unavailable"})
+					return
+				}
+			} else if !allowed {
+				log.Printf("rate_limit_exceeded device=%s slot=%d", deviceToken, slot)
+				writeJSON(w, http.StatusTooManyRequests, errorResponse{Error: "Rate limit exceeded"})
+				return
+			}
 		}
 
 		deviceID, err := findDeviceID(ctx, authPool, deviceToken)
@@ -127,6 +146,87 @@ func buildTimescaleURL() string {
 	return "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + db
 }
 
+type rateLimiter struct {
+	rdb          *redis.Client
+	devicePerMin int64
+	devicePerSec int64
+	slotPerMin   int64
+	failOpen     bool
+}
+
+var rateLimitScript = redis.NewScript(`
+local keys = KEYS
+local expiries = ARGV
+local counts = {}
+for i = 1, #keys do
+  local c = redis.call('INCR', keys[i])
+  if c == 1 then
+    redis.call('EXPIRE', keys[i], tonumber(expiries[i]))
+  end
+  counts[i] = c
+end
+return counts
+`)
+
+func newRateLimiter(ctx context.Context) *rateLimiter {
+	host := getEnv("REDIS_HOST", "redis")
+	port := getEnv("REDIS_PORT", "6379")
+	pass := getEnv("REDIS_PASSWORD", "")
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     host + ":" + port,
+		Password: pass,
+		DB:       0,
+	})
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Printf("redis unavailable, rate limiter disabled: %v", err)
+		return nil
+	}
+
+	return &rateLimiter{
+		rdb:          rdb,
+		devicePerMin: getEnvInt64("RATE_LIMIT_DEVICE_PER_MIN", 12),
+		devicePerSec: getEnvInt64("RATE_LIMIT_DEVICE_PER_SEC", 5),
+		slotPerMin:   getEnvInt64("RATE_LIMIT_SLOT_PER_MIN", 12),
+		failOpen:     getEnvBool("RATE_LIMIT_FAIL_OPEN", true),
+	}
+}
+
+func (r *rateLimiter) Allow(ctx context.Context, token string, slot int) (bool, error) {
+	keyDevSec := "rl:dev:" + token + ":1"
+	keyDevMin := "rl:dev:" + token + ":60"
+	keySlotMin := "rl:dev:" + token + ":slot:" + strconv.Itoa(slot) + ":60"
+
+	res, err := rateLimitScript.Run(ctx, r.rdb, []string{keyDevSec, keyDevMin, keySlotMin}, 1, 60, 60).Result()
+	if err != nil {
+		return false, err
+	}
+
+	values, ok := res.([]interface{})
+	if !ok || len(values) != 3 {
+		return false, errors.New("invalid rate limit response")
+	}
+
+	sec, err := toInt64(values[0])
+	if err != nil {
+		return false, err
+	}
+	min, err := toInt64(values[1])
+	if err != nil {
+		return false, err
+	}
+	slotMin, err := toInt64(values[2])
+	if err != nil {
+		return false, err
+	}
+
+	if sec > r.devicePerSec || min > r.devicePerMin || slotMin > r.slotPerMin {
+		return false, nil
+	}
+	return true, nil
+}
+
 func parseTopic(topic string) (string, int, error) {
 	parts := strings.Split(topic, "/")
 	if len(parts) < 5 {
@@ -184,6 +284,37 @@ func getEnv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func getEnvInt64(key string, def int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
+func getEnvBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return def
+}
+
+func toInt64(v interface{}) (int64, error) {
+	switch t := v.(type) {
+	case int64:
+		return t, nil
+	case int:
+		return int64(t), nil
+	case string:
+		return strconv.ParseInt(t, 10, 64)
+	default:
+		return 0, errors.New("invalid rate limit value")
+	}
 }
 
 func logRequest(next http.Handler) http.Handler {

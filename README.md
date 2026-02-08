@@ -214,6 +214,14 @@ docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
   "SELECT * FROM telemetry WHERE slot=99 ORDER BY timestamp DESC LIMIT 5;"
 ```
 
+### Rate Limit
+
+- Por device: 12 mensagens/min e 5 mensagens/seg
+- Por slot: 12 mensagens/min
+
+Variáveis em `.env`:
+`RATE_LIMIT_DEVICE_PER_MIN`, `RATE_LIMIT_DEVICE_PER_SEC`, `RATE_LIMIT_SLOT_PER_MIN`, `RATE_LIMIT_FAIL_OPEN`
+
 ### WSS Não Conecta
 
 ```bash
@@ -261,6 +269,7 @@ iiot_platform/
 - ✅ Cloudflare Tunnel (não expõe IP)
 - ✅ Secrets em `.env` (gitignored)
 - ✅ ACLs por device (EMQX Authorization via PostgreSQL)
+- ✅ Rate limit no Go API via Redis (por device e por slot)
 
 ## TODO
 

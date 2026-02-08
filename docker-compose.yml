@@ -105,6 +105,13 @@ services:
       - PORT=3001
       - TIMESCALE_HOST=timescaledb
       - TIMESCALE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - RATE_LIMIT_DEVICE_PER_MIN=12
+      - RATE_LIMIT_DEVICE_PER_SEC=5
+      - RATE_LIMIT_SLOT_PER_MIN=12
+      - RATE_LIMIT_FAIL_OPEN=true
     networks:
       - iiot_network
     depends_on:
