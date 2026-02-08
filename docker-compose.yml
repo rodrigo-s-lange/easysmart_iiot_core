@@ -44,6 +44,7 @@ services:
       - "18083:18083"
     volumes:
       - ./emqx/etc/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ./emqx/certs:/opt/emqx/etc/certs:ro
       - emqx_data:/opt/emqx/data
       - emqx_log:/opt/emqx/log
     networks:
@@ -84,3 +85,4 @@ volumes:
   redis_data:
   emqx_data:
   emqx_log:
+
