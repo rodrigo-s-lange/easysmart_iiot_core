@@ -230,6 +230,7 @@ iiot_platform/
 ├── docker-compose.yml
 ├── backup_emqx.sh       # Backup manual
 ├── restore_emqx.sh      # Restore manual
+├── CHANGELOG.md         # Histórico de mudanças
 └── README.md
 ```
 
