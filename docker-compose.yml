@@ -85,6 +85,31 @@ services:
       postgres:
         condition: service_healthy
 
+  go_api:
+    build:
+      context: ./go-api
+      dockerfile: Dockerfile
+    container_name: iiot_go_api
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - PORT=3001
+    networks:
+      - iiot_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 networks:
   iiot_network:
     driver: bridge

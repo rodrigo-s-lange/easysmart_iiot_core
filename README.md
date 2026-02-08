@@ -8,6 +8,7 @@ Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
 - **Redis 7** (6379): Cache
 - **EMQX 5.5.0** (1883, 8083, 8084, 18083): MQTT Broker
 - **Express API** (3000): Webhooks de telemetria
+- **Go API** (3001): Ingestão paralela (opcional)
 - **Cloudflare Tunnel**: WSS via `mqtt.easysmart.com.br:443`
 
 ## Quebra Temporal (MVP vs Próximas Mudanças)
@@ -81,8 +82,13 @@ curl http://localhost:3000/health
 2. Data Integration → Connectors → Create
    - Type: `HTTP Server`
    - Name: `api_webhook`
-   - URL: `http://iiot_nextjs:3000`
-   - Pool Size: `8`
+  - URL: `http://iiot_nextjs:3000`
+  - Pool Size: `8`
+
+**Para testar Go API em paralelo (sem quebrar o Express):**
+- Subir serviço Go: `docker-compose up -d go_api`
+- Trocar temporariamente o Connector URL para: `http://iiot_go_api:3001`
+- Se algo falhar, volte para `http://iiot_nextjs:3000`
 
 3. Data Integration → Rules → Create
    - ID: `telemetry_to_api`
@@ -218,6 +224,10 @@ iiot_platform/
 ├── app/                    # Express API
 │   ├── index.js
 │   ├── package.json
+│   └── Dockerfile
+├── go-api/                 # Go API (opcional)
+│   ├── main.go
+│   ├── go.mod
 │   └── Dockerfile
 ├── database/
 │   ├── init/              # Schema inicial
