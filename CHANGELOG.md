@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- TimescaleDB service and init schema for telemetria.
+- TimescaleDB env vars in `.env`.
+- Reset script to keep only the test device.
+
+### Changed
+- Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
+- README atualizado com stack e comandos do TimescaleDB.
 
 ## [2026-02-08]
 ### Added

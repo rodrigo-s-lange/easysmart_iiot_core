@@ -4,19 +4,21 @@ Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
 
 ## Stack
 
-- **PostgreSQL 16** (5432): Banco de dados particionado
+- **PostgreSQL 16** (5432): Auth, usuários, devices, comandos
+- **TimescaleDB 2.x** (5433): Telemetria (time-series)
 - **Redis 7** (6379): Cache
 - **EMQX 5.5.0** (1883, 8083, 8084, 18083): MQTT Broker
-- **Express API** (3000): Webhooks de telemetria
-- **Go API** (3001): Ingestão paralela (opcional)
+- **Express API** (3000): Webhooks de telemetria (fallback)
+- **Go API** (3001): Ingestão principal (TimescaleDB)
 - **Cloudflare Tunnel**: WSS via `mqtt.easysmart.com.br:443`
 
 ## Quebra Temporal (MVP vs Próximas Mudanças)
 
 **MVP Funcionando Hoje**
 - Ingestão MQTT com EMQX e autenticação via PostgreSQL
-- Telemetria persistida em PostgreSQL particionado
-- API Express recebendo webhook do Rule Engine
+- Telemetria persistida em TimescaleDB
+- Go API recebendo webhook do Rule Engine
+- Express como fallback
 - WSS via Cloudflare Tunnel
 - Backup/restore do EMQX
 
@@ -26,7 +28,7 @@ Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
 - Autenticação e rate limit na API
 - Segredos fora do Git (env/secrets)
 - Melhorias de escala: batch inserts + fila
-- Decidir timeseries: TimescaleDB ou alternativa
+- Retenção/compressão no TimescaleDB
 
 ## Quick Start
 
@@ -65,6 +67,11 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 **PostgreSQL:**
 ```bash
 docker exec -it iiot_postgres psql -U admin -d iiot_platform
+```
+
+**TimescaleDB (telemetria):**
+```bash
+docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry
 ```
 
 **API Health:**
@@ -175,6 +182,12 @@ docker exec -it iiot_postgres psql -U admin -d iiot_platform -c \
   "SELECT tablename FROM pg_tables WHERE tablename LIKE 'telemetry_%' ORDER BY tablename;"
 ```
 
+### Reset de Dados (mantendo device de teste)
+
+```bash
+docker exec -i iiot_postgres psql -U admin -d iiot_platform < database/maintenance/reset_keep_device.sql
+```
+
 ## Troubleshooting
 
 ### Rule Engine Parou de Funcionar
@@ -196,9 +209,9 @@ curl -X POST http://localhost:3000/api/telemetry \
   -H "Content-Type: application/json" \
   -d '{"clientid":"test","topic":"devices/TOKEN/telemetry/slot/99","payload":{"value":1},"timestamp":"'$(date +%s)000'"}'
 
-# Verificar banco
-docker exec -it iiot_postgres psql -U admin -d iiot_platform -c \
-  "SELECT * FROM telemetry WHERE slot=99;"
+# Verificar telemetria (TimescaleDB)
+docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
+  "SELECT * FROM telemetry WHERE slot=99 ORDER BY timestamp DESC LIMIT 5;"
 ```
 
 ### WSS Não Conecta
@@ -231,6 +244,7 @@ iiot_platform/
 │   └── Dockerfile
 ├── database/
 │   ├── init/              # Schema inicial
+│   ├── timescale/         # Init do TimescaleDB
 │   └── maintenance/       # Scripts de manutenção
 ├── emqx/
 │   ├── etc/

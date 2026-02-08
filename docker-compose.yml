@@ -20,6 +20,29 @@ services:
       timeout: 5s
       retries: 5
 
+  timescaledb:
+    image: timescale/timescaledb:2.14.2-pg16
+    container_name: iiot_timescaledb
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DB=${TIMESCALE_DB}
+      - POSTGRES_USER=${TIMESCALE_USER}
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./database/timescale/init:/docker-entrypoint-initdb.d
+    networks:
+      - iiot_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER} -d ${TIMESCALE_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: iiot_redis
@@ -104,10 +127,14 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - PORT=3001
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
     networks:
       - iiot_network
     depends_on:
       postgres:
+        condition: service_healthy
+      timescaledb:
         condition: service_healthy
 
 networks:
@@ -119,3 +146,4 @@ volumes:
   redis_data:
   emqx_data:
   emqx_log:
+  timescale_data:

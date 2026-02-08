@@ -26,14 +26,19 @@ type errorResponse struct {
 }
 
 func main() {
-	dbURL := buildDBURL()
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, dbURL)
+	authPool, err := pgxpool.New(ctx, buildPostgresURL())
 	if err != nil {
-		log.Fatalf("db connection error: %v", err)
+		log.Fatalf("postgres connection error: %v", err)
 	}
-	defer pool.Close()
+	defer authPool.Close()
+
+	telemetryPool, err := pgxpool.New(ctx, buildTimescaleURL())
+	if err != nil {
+		log.Fatalf("timescale connection error: %v", err)
+	}
+	defer telemetryPool.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +66,7 @@ func main() {
 			return
 		}
 
-		deviceID, err := findDeviceID(ctx, pool, deviceToken)
+		deviceID, err := findDeviceID(ctx, authPool, deviceToken)
 		if err != nil {
 			if errors.Is(err, errDeviceNotFound) {
 				writeJSON(w, http.StatusNotFound, errorResponse{Error: "Device not found or inactive"})
@@ -78,7 +83,7 @@ func main() {
 			return
 		}
 
-		if err := insertTelemetry(ctx, pool, deviceID, slot, req.Payload, ts); err != nil {
+		if err := insertTelemetry(ctx, telemetryPool, deviceID, slot, req.Payload, ts); err != nil {
 			log.Printf("insert error: %v", err)
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Internal server error"})
 			return
@@ -104,12 +109,21 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
-func buildDBURL() string {
+func buildPostgresURL() string {
 	host := getEnv("POSTGRES_HOST", "postgres")
 	port := getEnv("POSTGRES_PORT", "5432")
 	db := getEnv("POSTGRES_DB", "iiot_platform")
 	user := getEnv("POSTGRES_USER", "admin")
 	pass := getEnv("POSTGRES_PASSWORD", "0039")
+	return "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + db
+}
+
+func buildTimescaleURL() string {
+	host := getEnv("TIMESCALE_HOST", getEnv("POSTGRES_HOST", "timescaledb"))
+	port := getEnv("TIMESCALE_PORT", getEnv("POSTGRES_PORT", "5432"))
+	db := getEnv("TIMESCALE_DB", getEnv("POSTGRES_DB", "iiot_telemetry"))
+	user := getEnv("TIMESCALE_USER", getEnv("POSTGRES_USER", "admin"))
+	pass := getEnv("TIMESCALE_PASSWORD", getEnv("POSTGRES_PASSWORD", "0039"))
 	return "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + db
 }
 
