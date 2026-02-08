@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
 - README atualizado com stack e comandos do TimescaleDB.
 
+### Removed
+- Express API e serviço `nextjs` do compose (Go API agora é o único ingest).
+
 ## [2026-02-08]
 ### Added
 - EMQX ACLs per device via PostgreSQL; `no_match = deny`.

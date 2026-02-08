@@ -84,30 +84,6 @@ services:
       - EMQX_NODE_NAME=emqx@127.0.0.1
       - EMQX_LOADED_PLUGINS="emqx_dashboard"
 
-  nextjs:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    container_name: iiot_nextjs
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-    networks:
-      - iiot_network
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   go_api:
     build:
       context: ./go-api

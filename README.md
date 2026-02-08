@@ -1,6 +1,6 @@
 # IIoT Platform
 
-Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
+Plataforma Industrial IoT com MQTT, PostgreSQL, TimescaleDB e Cloudflare Tunnel.
 
 ## Stack
 
@@ -8,7 +8,6 @@ Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
 - **TimescaleDB 2.x** (5433): Telemetria (time-series)
 - **Redis 7** (6379): Cache
 - **EMQX 5.5.0** (1883, 8083, 8084, 18083): MQTT Broker
-- **Express API** (3000): Webhooks de telemetria (fallback)
 - **Go API** (3001): Ingestão principal (TimescaleDB)
 - **Cloudflare Tunnel**: WSS via `mqtt.easysmart.com.br:443`
 
@@ -18,7 +17,6 @@ Plataforma Industrial IoT com MQTT, PostgreSQL, Express API e Cloudflare Tunnel.
 - Ingestão MQTT com EMQX e autenticação via PostgreSQL
 - Telemetria persistida em TimescaleDB
 - Go API recebendo webhook do Rule Engine
-- Express como fallback
 - WSS via Cloudflare Tunnel
 - Backup/restore do EMQX
 
@@ -76,7 +74,7 @@ docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry
 
 **API Health:**
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:3001/health
 ```
 
 ## Configuração do EMQX
@@ -89,13 +87,8 @@ curl http://localhost:3000/health
 2. Data Integration → Connectors → Create
    - Type: `HTTP Server`
    - Name: `api_webhook`
-  - URL: `http://iiot_nextjs:3000`
+   - URL: `http://iiot_go_api:3001`
   - Pool Size: `8`
-
-**Para testar Go API em paralelo (sem quebrar o Express):**
-- Subir serviço Go: `docker-compose up -d go_api`
-- Trocar temporariamente o Connector URL para: `http://iiot_go_api:3001`
-- Se algo falhar, volte para `http://iiot_nextjs:3000`
 
 3. Data Integration → Rules → Create
    - ID: `telemetry_to_api`
@@ -201,11 +194,8 @@ docker exec -i iiot_postgres psql -U admin -d iiot_platform < database/maintenan
 ### API Não Recebe Dados
 
 ```bash
-# Ver logs da API
-docker logs iiot_nextjs --tail 50
-
 # Testar endpoint direto
-curl -X POST http://localhost:3000/api/telemetry \
+curl -X POST http://localhost:3001/api/telemetry \
   -H "Content-Type: application/json" \
   -d '{"clientid":"test","topic":"devices/TOKEN/telemetry/slot/99","payload":{"value":1},"timestamp":"'$(date +%s)000'"}'
 
@@ -234,10 +224,6 @@ curl -I http://localhost:8083
 
 ```
 iiot_platform/
-├── app/                    # Express API
-│   ├── index.js
-│   ├── package.json
-│   └── Dockerfile
 ├── go-api/                 # Go API (opcional)
 │   ├── main.go
 │   ├── go.mod
@@ -318,7 +304,7 @@ docker-compose restart emqx
 docker logs iiot_emqx --tail 100
 
 # API
-docker logs iiot_nextjs --tail 100
+docker logs iiot_go_api --tail 100
 
 # PostgreSQL
 docker logs iiot_postgres --tail 100
