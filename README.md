@@ -1,53 +1,76 @@
 # IIoT Platform
 
-Plataforma Industrial IoT com MQTT, PostgreSQL, TimescaleDB e Cloudflare Tunnel.
+Plataforma Industrial IoT focada em ingestão MQTT, persistência de telemetria e acesso em tempo real via WSS.
 
-## Stack
+**Objetivo do projeto**
+- Receber telemetria MQTT de devices.
+- Entregar dados em tempo real (frontend via MQTT/WSS).
+- Persistir histórico com timeseries (TimescaleDB).
+- Manter autenticação/ACL seguras no EMQX.
 
-- **PostgreSQL 16** (5432): Auth, usuários, devices, comandos
-- **TimescaleDB 2.x** (5433): Telemetria (time-series)
-- **Redis 7** (6379): Cache
-- **EMQX 5.5.0** (1883, 8083, 8084, 18083): MQTT Broker
-- **Go API** (3001): Ingestão principal (TimescaleDB)
-- **Cloudflare Tunnel**: WSS via `mqtt.easysmart.com.br:443`
+## Arquitetura (visão rápida)
 
-## Quebra Temporal (MVP vs Próximas Mudanças)
+**Fluxo realtime (front)**
+1. Device publica em `devices/<token>/telemetry/slot/<n>`.
+2. EMQX distribui para subscribers (frontend via WSS).
 
-**MVP Funcionando Hoje**
-- Ingestão MQTT com EMQX e autenticação via PostgreSQL
-- Telemetria persistida em TimescaleDB
-- Go API recebendo webhook do Rule Engine
-- WSS via Cloudflare Tunnel
-- Backup/restore do EMQX
+**Fluxo de persistência**
+1. EMQX Rule Engine envia webhook HTTP.
+2. Go API valida e aplica rate limit (Redis).
+3. Go API grava no TimescaleDB.
+4. Go API atualiza cache do último valor no Redis.
 
-**Vamos Começar a Mexer (Próxima Fase)**
-- Fortalecer auth (hash forte + tokens separados das credenciais)
-- ACLs por device/tenant no EMQX
-- Autenticação e rate limit na API
-- Segredos fora do Git (env/secrets)
-- Melhorias de escala: batch inserts + fila
-- Retenção/compressão no TimescaleDB
+**Importante:** O realtime é MQTT direto. O Go API só controla persistência.
 
-## Quick Start
+## Stack e responsabilidades
+
+- **EMQX 5.5.0** (1883, 8083, 8084, 18083): broker MQTT + Rule Engine.
+- **PostgreSQL 16** (5432): auth, usuários, devices, comandos.
+- **TimescaleDB 2.x** (5433): telemetria (time-series).
+- **Redis 7** (6379): rate limit + cache do último valor.
+- **Go API** (3001): webhook de ingestão e endpoints auxiliares.
+- **Cloudflare Tunnel**: WSS externo (`mqtt.easysmart.com.br:443`).
+
+## Serviços e portas
+
+- EMQX Dashboard: `http://192.168.0.99:18083`
+- MQTT TCP: `192.168.0.99:1883`
+- MQTT WS/WSS: `192.168.0.99:8083` / `8084`
+- Go API: `http://localhost:3001`
+- PostgreSQL: `localhost:5432`
+- TimescaleDB: `localhost:5433`
+- Redis: `localhost:6379`
+
+## Credenciais e ambiente
+
+Arquivo `.env` (gitignored) contém:
+- `POSTGRES_*`
+- `TIMESCALE_*`
+- `REDIS_PASSWORD`
+- `EMQX_DASHBOARD_*`
+- Rate limit e cache:
+  - `RATE_LIMIT_DEVICE_PER_MIN=12`
+  - `RATE_LIMIT_DEVICE_PER_SEC=5`
+  - `RATE_LIMIT_SLOT_PER_MIN=12`
+  - `RATE_LIMIT_FAIL_OPEN=true`
+  - `CACHE_TTL_SECONDS=0` (0 = sem expiração)
+
+## Quick start
 
 ```bash
-# Subir stack
+# subir tudo
 docker-compose up -d
 
-# Verificar status
+# status
 docker-compose ps
 
-# Ver logs
+# logs
 docker-compose logs -f
 ```
 
-## Acessos
+## MQTT
 
-**EMQX Dashboard:**
-- Local: http://192.168.0.99:18083
-- Login: `admin` / `admin0039`
-
-**MQTT Local:**
+**Local (TCP)**
 ```bash
 mosquitto_pub -h 192.168.0.99 -p 1883 \
   -u "TOKEN" -P "TOKEN" \
@@ -55,42 +78,47 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
   -m '{"value":25.5}'
 ```
 
-**MQTT via Internet (WSS):**
+**Internet (WSS)**
 - Host: `mqtt.easysmart.com.br`
 - Port: `443`
 - Path: `/mqtt`
-- SSL: ✓
-- Username/Password: device token
+- Protocol: `mqtt`
+- SSL: sim
+- Username/Password: `device token`
 
-**PostgreSQL:**
-```bash
-docker exec -it iiot_postgres psql -U admin -d iiot_platform
-```
+## Go API
 
-**TimescaleDB (telemetria):**
-```bash
-docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry
-```
-
-**API Health:**
+**Health**
 ```bash
 curl http://localhost:3001/health
 ```
 
-## Configuração do EMQX
+**Webhook (EMQX Rule Engine)**
+`POST /api/telemetry`
 
-### Rule Engine (via Dashboard)
+**Cache do último valor**
+`GET /api/telemetry/latest?token=TOKEN&slot=0`
+- Se não houver cache: retorna `200` com `{}`.
 
-**IMPORTANTE:** Rule Engine não persiste em `emqx.conf`. Configure via Dashboard:
+## EMQX (auth + rule engine)
 
-1. Acesse: http://192.168.0.99:18083
-2. Data Integration → Connectors → Create
+### Auth/ACL (emqx.conf)
+- Autenticação via PostgreSQL.
+- ACL por device: `devices/<token>/#`.
+- `no_match = deny`.
+
+Arquivo: `emqx/etc/emqx.conf`
+
+### Rule Engine (configurar via Dashboard)
+**Nota:** Rules não persistem no `emqx.conf`.
+
+1. Dashboard → Data Integration → Connectors → Create
    - Type: `HTTP Server`
    - Name: `api_webhook`
    - URL: `http://iiot_go_api:3001`
-  - Pool Size: `8`
+   - Pool Size: `8`
 
-3. Data Integration → Rules → Create
+2. Dashboard → Data Integration → Rules → Create
    - ID: `telemetry_to_api`
    - SQL:
      ```sql
@@ -98,7 +126,7 @@ curl http://localhost:3001/health
      FROM "devices/+/telemetry/slot/+"
      ```
 
-4. Add Action → HTTP Server
+3. Action → HTTP Server
    - Connector: `api_webhook`
    - Method: `POST`
    - Path: `/api/telemetry`
@@ -108,76 +136,13 @@ curl http://localhost:3001/health
      {"clientid":"${clientid}","topic":"${topic}","payload":${payload},"timestamp":"${timestamp}"}
      ```
 
-### Backup e Restore
+## Persistência
 
-**CRÍTICO:** Faça backup antes de `docker-compose down` ou `docker volume rm`!
-
-**Criar backup:**
-```bash
-./backup_emqx.sh
-```
-
-**Restaurar último backup:**
-```bash
-./restore_emqx.sh
-docker-compose restart emqx
-```
-
-**Backups ficam em:** `backups/emqx_config_YYYYMMDD_HHMMSS.tar.gz`
-
-## SSL/TLS (Let's Encrypt)
-
-**Certificados:**
-- Domínio: `mqtt.easysmart.com.br`
-- Localização: `/etc/letsencrypt/live/mqtt.easysmart.com.br/`
-- Renovação: Automática (certbot timer)
-
-**Verificar renovação:**
-```bash
-sudo systemctl status certbot.timer
-```
-
-## Cloudflare Tunnel
-
-**Status:**
-```bash
-sudo systemctl status cloudflared
-```
-
-**Logs:**
-```bash
-sudo journalctl -u cloudflared -f
-```
-
-**Reiniciar:**
-```bash
-sudo systemctl restart cloudflared
-```
-
-**Config:** `~/.cloudflared/config.yml`
-
-## Manutenção Automática
-
-### Partições PostgreSQL
-
-- **Criação**: Automática todo dia 1º às 02:00
-- **Mantém**: 3 meses futuros
-- **Log**: `/var/log/iiot_partition_maintenance.log`
-
-**Executar manualmente:**
-```bash
-./database/maintenance/run_partition_maintenance.sh
-```
-
-**Ver partições:**
-```bash
-docker exec -it iiot_postgres psql -U admin -d iiot_platform -c \
-  "SELECT tablename FROM pg_tables WHERE tablename LIKE 'telemetry_%' ORDER BY tablename;"
-```
+- Telemetria: TimescaleDB (`iiot_telemetry`)
+- Auth/devices: PostgreSQL (`iiot_platform`)
 
 ### Retenção TimescaleDB
-
-- **Retenção atual**: 365 dias (telemetria)
+- **365 dias** por policy.
 
 Para alterar:
 ```sql
@@ -185,176 +150,103 @@ SELECT remove_retention_policy('telemetry');
 SELECT add_retention_policy('telemetry', INTERVAL '365 days');
 ```
 
-### Reset de Dados (mantendo device de teste)
+## Rate limit
 
+- Por device: 12 msg/min e 5 msg/s
+- Por slot: 12 msg/min
+
+Logs de bloqueio (Go API):
+`rate_limit_exceeded device=<token> slot=<n>`
+
+## Cache do último valor
+
+- Mantém o último valor de cada device/slot no Redis.
+- Serve para telas que precisam mostrar estado atual sem esperar publish.
+
+## Operações comuns
+
+**Reset mantendo device de teste**
 ```bash
 docker exec -i iiot_postgres psql -U admin -d iiot_platform < database/maintenance/reset_keep_device.sql
 ```
 
-## Troubleshooting
-
-### Rule Engine Parou de Funcionar
-
-1. Criar backup: `./backup_emqx.sh`
-2. Verificar connector: Dashboard → Connectors → Status
-3. Verificar rule: Dashboard → Rules → Metrics
-4. Ver logs: `docker logs iiot_emqx --tail 50`
-5. Restart: `docker-compose restart emqx`
-
-### API Não Recebe Dados
-
-```bash
-# Testar endpoint direto
-curl -X POST http://localhost:3001/api/telemetry \
-  -H "Content-Type: application/json" \
-  -d '{"clientid":"test","topic":"devices/TOKEN/telemetry/slot/99","payload":{"value":1},"timestamp":"'$(date +%s)000'"}'
-
-# Verificar telemetria (TimescaleDB)
-docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
-  "SELECT * FROM telemetry WHERE slot=99 ORDER BY timestamp DESC LIMIT 5;"
-```
-
-### Cache Realtime (último valor)
-
-Endpoint:
-```bash
-curl "http://localhost:3001/api/telemetry/latest?token=TOKEN&slot=0"
-```
-
-Se não houver valor em cache, retorna `200` com `{}`.
-
-### Rate Limit
-
-- Por device: 12 mensagens/min e 5 mensagens/seg
-- Por slot: 12 mensagens/min
-
-Variáveis em `.env`:
-`RATE_LIMIT_DEVICE_PER_MIN`, `RATE_LIMIT_DEVICE_PER_SEC`, `RATE_LIMIT_SLOT_PER_MIN`, `RATE_LIMIT_FAIL_OPEN`
-
-Cache TTL (opcional):
-`CACHE_TTL_SECONDS` (0 = sem expiração)
-
-### WSS Não Conecta
-
-```bash
-# Verificar Cloudflare Tunnel
-sudo systemctl status cloudflared
-
-# Verificar DNS
-nslookup mqtt.easysmart.com.br
-
-# Verificar listener WSS EMQX
-docker exec iiot_emqx emqx ctl listeners | grep wss
-
-# Testar local
-curl -I http://localhost:8083
-```
-
-## Estrutura
-
-```
-iiot_platform/
-├── go-api/                 # Go API (opcional)
-│   ├── main.go
-│   ├── go.mod
-│   └── Dockerfile
-├── database/
-│   ├── init/              # Schema inicial
-│   ├── timescale/         # Init do TimescaleDB
-│   └── maintenance/       # Scripts de manutenção
-├── emqx/
-│   ├── etc/
-│   │   └── emqx.conf     # Config declarativa
-│   └── certs/            # Certificados SSL
-├── backups/              # Backups do EMQX
-├── docker-compose.yml
-├── backup_emqx.sh       # Backup manual
-├── restore_emqx.sh      # Restore manual
-├── CHANGELOG.md         # Histórico de mudanças
-└── README.md
-```
-
-## Segurança
-
-- ✅ Autenticação MQTT via PostgreSQL
-- ✅ SSL/TLS (Let's Encrypt)
-- ✅ Cloudflare Tunnel (não expõe IP)
-- ✅ Secrets em `.env` (gitignored)
-- ✅ ACLs por device (EMQX Authorization via PostgreSQL)
-- ✅ Rate limit no Go API via Redis (por device e por slot)
-- ✅ Cache do último valor por slot (Redis)
-
-## TODO
-
-- [ ] ACLs por tenant (expansão)
-- [ ] Frontend dashboard (Next.js)
-- [ ] Comandos bidirecionais (MQTT publish)
-- [ ] Multi-tenancy
-- [ ] Sparkplug B
-- [ ] Grafana dashboards
-
-## Estado Atual (Importante para Continuidade)
-
-**Resumo do que foi implementado**
-- ACLs por device no EMQX via PostgreSQL: cada device só publica/assina `devices/<token>/#`
-- Autenticação MQTT via PostgreSQL (token como username/password)
-- `no_match = deny` em authorization
-- Logs do Docker com rotação (`max-size=10m`, `max-file=5`) no EMQX e API
-- `docker-compose.yml` usa `.env` via `env_file`
-
-**Arquivos-chave**
-- EMQX auth/ACL: `emqx/etc/emqx.conf`
-- Compose/log-rotation/env: `docker-compose.yml`
-- Secrets: `.env` (gitignored)
-
-**Comportamento esperado**
-- `mosquitto_sub` fica bloqueado aguardando mensagens (normal). Saída com `Ctrl+C`.
-- WSS via Cloudflare está OK (handshake HTTP 101 com `Sec-WebSocket-Protocol: mqtt`).
-
-**Nota sobre EMQX + PostgreSQL**
-- As queries em `emqx.conf` usam `${username}` dentro do SQL, sem aspas.
-- Esse formato está funcionando no ambiente atual. Alterações aqui podem quebrar auth.
-
-**Comandos de validação**
-```bash
-# Teste MQTT local
-mosquitto_sub -h 192.168.0.99 -p 1883 \
-  -u "TOKEN" -P "TOKEN" \
-  -t "devices/TOKEN/#" -v
-
-# Ver logs recentes
-docker logs iiot_emqx --since 5m
-
-# Reiniciar EMQX
-docker-compose restart emqx
-```
-
-## Logs Importantes
-
+**Logs**
 ```bash
 # EMQX
 docker logs iiot_emqx --tail 100
 
-# API
+# Go API
 docker logs iiot_go_api --tail 100
 
 # PostgreSQL
 docker logs iiot_postgres --tail 100
 
-# Cloudflare Tunnel
-sudo journalctl -u cloudflared -n 100
+# TimescaleDB
+docker logs iiot_timescaledb --tail 100
 ```
 
-## Performance
+**Cloudflare Tunnel**
+```bash
+sudo systemctl status cloudflared
+sudo journalctl -u cloudflared -f
+```
 
-**Testado:**
-- ✅ Restart completo (configs persistem)
-- ✅ Autenticação negativa (rejeita senhas erradas)
-- ✅ Multi-slot (string, number, object)
-- ✅ WSS via Internet
-- ✅ Webhook end-to-end (MQTT → API → PostgreSQL)
+## Troubleshooting
 
-**Capacidade:**
-- EMQX: 1M+ conexões simultâneas
-- PostgreSQL: Particionamento automático
-- API: Pool de 20 conexões
+**API não recebe dados**
+```bash
+curl -X POST http://localhost:3001/api/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{"clientid":"test","topic":"devices/TOKEN/telemetry/slot/99","payload":{"value":1},"timestamp":"'$(date +%s)000'"}'
+
+docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
+  "SELECT * FROM telemetry WHERE slot=99 ORDER BY timestamp DESC LIMIT 5;"
+```
+
+**WSS não conecta**
+```bash
+sudo systemctl status cloudflared
+nslookup mqtt.easysmart.com.br
+
+docker exec iiot_emqx emqx ctl listeners | grep wss
+curl -I http://localhost:8083
+```
+
+## Estrutura do repositório
+
+```
+iiot_platform/
+├── go-api/                 # Go API (ingestão + cache)
+├── database/
+│   ├── init/              # Schema inicial (Postgres)
+│   ├── timescale/         # Init TimescaleDB
+│   └── maintenance/       # Scripts de manutenção
+├── emqx/
+│   ├── etc/emqx.conf       # Config declarativa
+│   └── certs/              # Certificados SSL
+├── backups/                # Backups do EMQX
+├── docker-compose.yml
+├── backup_emqx.sh
+├── restore_emqx.sh
+├── CHANGELOG.md
+└── README.md
+```
+
+## Estado atual (pontos críticos)
+
+- Auth/ACL no EMQX via PostgreSQL com `${username}` nas queries.
+- Realtime via MQTT/WSS direto do EMQX.
+- Persistência via Go API → TimescaleDB.
+- Rate limit e cache no Redis.
+- Log rotation habilitado no Docker (EMQX/Go API).
+
+## Próximos passos sugeridos
+
+- Frontend dashboard (Next.js).
+- Multi-tenant (ACLs por tenant).
+- Comandos bidirecionais (MQTT publish).
+- Grafana dashboards.
+
+## Histórico
+
+Veja `CHANGELOG.md`.
