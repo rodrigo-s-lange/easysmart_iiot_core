@@ -167,7 +167,7 @@ func main() {
 		value, err := getCachedLatest(ctx, rdb, deviceID, slot)
 		if err != nil {
 			if errors.Is(err, errCacheMiss) {
-				writeJSON(w, http.StatusNotFound, errorResponse{Error: "No cached value"})
+				writeJSON(w, http.StatusOK, map[string]interface{}{})
 				return
 			}
 			log.Printf("cache error: %v", err)

@@ -221,7 +221,7 @@ Endpoint:
 curl "http://localhost:3001/api/telemetry/latest?token=TOKEN&slot=0"
 ```
 
-Se não houver valor em cache, retorna `404`.
+Se não houver valor em cache, retorna `200` com `{}`.
 
 ### Rate Limit
 
