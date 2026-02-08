@@ -177,12 +177,12 @@ docker exec -it iiot_postgres psql -U admin -d iiot_platform -c \
 
 ### Retenção TimescaleDB
 
-- **Retenção atual**: 90 dias (telemetria)
+- **Retenção atual**: 365 dias (telemetria)
 
 Para alterar:
 ```sql
 SELECT remove_retention_policy('telemetry');
-SELECT add_retention_policy('telemetry', INTERVAL '180 days');
+SELECT add_retention_policy('telemetry', INTERVAL '365 days');
 ```
 
 ### Reset de Dados (mantendo device de teste)

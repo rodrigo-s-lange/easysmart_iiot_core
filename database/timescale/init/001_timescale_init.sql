@@ -14,5 +14,5 @@ SELECT create_hypertable('telemetry', 'timestamp', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_telemetry_device_slot_ts
     ON telemetry (device_id, slot, timestamp DESC);
 
--- Retention policy: keep last 90 days
-SELECT add_retention_policy('telemetry', INTERVAL '90 days', if_not_exists => TRUE);
+-- Retention policy: keep last 365 days
+SELECT add_retention_policy('telemetry', INTERVAL '365 days', if_not_exists => TRUE);
