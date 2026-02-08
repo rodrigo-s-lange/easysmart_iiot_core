@@ -26,6 +26,13 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+type latestTelemetry struct {
+	DeviceID  string          `json:"device_id"`
+	Slot      int             `json:"slot"`
+	Value     json.RawMessage `json:"value"`
+	Timestamp string          `json:"timestamp"`
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -41,7 +48,8 @@ func main() {
 	}
 	defer telemetryPool.Close()
 
-	limiter := newRateLimiter(ctx)
+	rdb := newRedisClient(ctx)
+	limiter := newRateLimiter(rdb)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -108,11 +116,66 @@ func main() {
 			return
 		}
 
+		if rdb != nil {
+			if err := cacheLatest(ctx, rdb, deviceID, slot, req.Payload, ts); err != nil {
+				log.Printf("cache error: %v", err)
+			}
+		}
+
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success":   true,
 			"device_id": deviceID,
 			"slot":      slot,
 		})
+	})
+
+	mux.HandleFunc("/api/telemetry/latest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "Method not allowed"})
+			return
+		}
+
+		if rdb == nil {
+			writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Cache unavailable"})
+			return
+		}
+
+		deviceToken := r.URL.Query().Get("token")
+		slotStr := r.URL.Query().Get("slot")
+		if deviceToken == "" || slotStr == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "token and slot are required"})
+			return
+		}
+
+		slot, err := strconv.Atoi(slotStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Invalid slot"})
+			return
+		}
+
+		deviceID, err := findDeviceID(ctx, authPool, deviceToken)
+		if err != nil {
+			if errors.Is(err, errDeviceNotFound) {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "Device not found or inactive"})
+				return
+			}
+			log.Printf("db error: %v", err)
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		value, err := getCachedLatest(ctx, rdb, deviceID, slot)
+		if err != nil {
+			if errors.Is(err, errCacheMiss) {
+				writeJSON(w, http.StatusNotFound, errorResponse{Error: "No cached value"})
+				return
+			}
+			log.Printf("cache error: %v", err)
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Internal server error"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, value)
 	})
 
 	addr := ":" + getEnv("PORT", "3001")
@@ -168,7 +231,7 @@ end
 return counts
 `)
 
-func newRateLimiter(ctx context.Context) *rateLimiter {
+func newRedisClient(ctx context.Context) *redis.Client {
 	host := getEnv("REDIS_HOST", "redis")
 	port := getEnv("REDIS_PORT", "6379")
 	pass := getEnv("REDIS_PASSWORD", "")
@@ -180,10 +243,17 @@ func newRateLimiter(ctx context.Context) *rateLimiter {
 	})
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Printf("redis unavailable, rate limiter disabled: %v", err)
+		log.Printf("redis unavailable: %v", err)
 		return nil
 	}
 
+	return rdb
+}
+
+func newRateLimiter(rdb *redis.Client) *rateLimiter {
+	if rdb == nil {
+		return nil
+	}
 	return &rateLimiter{
 		rdb:          rdb,
 		devicePerMin: getEnvInt64("RATE_LIMIT_DEVICE_PER_MIN", 12),
@@ -225,6 +295,50 @@ func (r *rateLimiter) Allow(ctx context.Context, token string, slot int) (bool, 
 		return false, nil
 	}
 	return true, nil
+}
+
+var errCacheMiss = errors.New("cache miss")
+
+func cacheLatest(ctx context.Context, rdb *redis.Client, deviceID string, slot int, payload json.RawMessage, ts time.Time) error {
+	item := latestTelemetry{
+		DeviceID:  deviceID,
+		Slot:      slot,
+		Value:     payload,
+		Timestamp: ts.UTC().Format(time.RFC3339),
+	}
+
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+
+	key := cacheKey(deviceID, slot)
+	ttl := getEnvInt64("CACHE_TTL_SECONDS", 0)
+	if ttl > 0 {
+		return rdb.Set(ctx, key, raw, time.Duration(ttl)*time.Second).Err()
+	}
+	return rdb.Set(ctx, key, raw, 0).Err()
+}
+
+func getCachedLatest(ctx context.Context, rdb *redis.Client, deviceID string, slot int) (latestTelemetry, error) {
+	key := cacheKey(deviceID, slot)
+	raw, err := rdb.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return latestTelemetry{}, errCacheMiss
+		}
+		return latestTelemetry{}, err
+	}
+
+	var item latestTelemetry
+	if err := json.Unmarshal([]byte(raw), &item); err != nil {
+		return latestTelemetry{}, err
+	}
+	return item, nil
+}
+
+func cacheKey(deviceID string, slot int) string {
+	return "latest:device:" + deviceID + ":slot:" + strconv.Itoa(slot)
 }
 
 func parseTopic(topic string) (string, int, error) {

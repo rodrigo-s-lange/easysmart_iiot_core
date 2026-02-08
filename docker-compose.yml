@@ -112,6 +112,7 @@ services:
       - RATE_LIMIT_DEVICE_PER_SEC=5
       - RATE_LIMIT_SLOT_PER_MIN=12
       - RATE_LIMIT_FAIL_OPEN=true
+      - CACHE_TTL_SECONDS=0
     networks:
       - iiot_network
     depends_on:

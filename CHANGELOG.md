@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Go API healthcheck in docker-compose.
 - TimescaleDB retention policy (365 days).
 - Rate limit no Go API via Redis (device + slot).
+- Cache do último valor por slot via Redis e endpoint de leitura.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).

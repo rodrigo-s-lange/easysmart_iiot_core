@@ -214,6 +214,15 @@ docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
   "SELECT * FROM telemetry WHERE slot=99 ORDER BY timestamp DESC LIMIT 5;"
 ```
 
+### Cache Realtime (último valor)
+
+Endpoint:
+```bash
+curl "http://localhost:3001/api/telemetry/latest?token=TOKEN&slot=0"
+```
+
+Se não houver valor em cache, retorna `404`.
+
 ### Rate Limit
 
 - Por device: 12 mensagens/min e 5 mensagens/seg
@@ -221,6 +230,9 @@ docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
 
 Variáveis em `.env`:
 `RATE_LIMIT_DEVICE_PER_MIN`, `RATE_LIMIT_DEVICE_PER_SEC`, `RATE_LIMIT_SLOT_PER_MIN`, `RATE_LIMIT_FAIL_OPEN`
+
+Cache TTL (opcional):
+`CACHE_TTL_SECONDS` (0 = sem expiração)
 
 ### WSS Não Conecta
 
@@ -270,6 +282,7 @@ iiot_platform/
 - ✅ Secrets em `.env` (gitignored)
 - ✅ ACLs por device (EMQX Authorization via PostgreSQL)
 - ✅ Rate limit no Go API via Redis (por device e por slot)
+- ✅ Cache do último valor por slot (Redis)
 
 ## TODO
 
