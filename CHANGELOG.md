@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 - TimescaleDB service and init schema for telemetria.
 - TimescaleDB env vars in `.env`.
 - Reset script to keep only the test device.
+- Go API healthcheck in docker-compose.
+- TimescaleDB retention policy (90 days).
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).

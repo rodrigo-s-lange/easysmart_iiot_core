@@ -175,6 +175,16 @@ docker exec -it iiot_postgres psql -U admin -d iiot_platform -c \
   "SELECT tablename FROM pg_tables WHERE tablename LIKE 'telemetry_%' ORDER BY tablename;"
 ```
 
+### Retenção TimescaleDB
+
+- **Retenção atual**: 90 dias (telemetria)
+
+Para alterar:
+```sql
+SELECT remove_retention_policy('telemetry');
+SELECT add_retention_policy('telemetry', INTERVAL '180 days');
+```
+
 ### Reset de Dados (mantendo device de teste)
 
 ```bash
