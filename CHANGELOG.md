@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - TimescaleDB retention policy (365 days).
 - Rate limit no Go API via Redis (device + slot).
 - Cache do último valor por slot via Redis e endpoint de leitura.
+- Planned device provisioning flow documented in README (unclaimed → claim → secret).
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
