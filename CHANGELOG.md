@@ -12,10 +12,13 @@ All notable changes to this project will be documented in this file.
 - Rate limit no Go API via Redis (device + slot).
 - Cache do último valor por slot via Redis e endpoint de leitura.
 - Planned device provisioning flow documented in README (unclaimed → claim → secret).
+- `.env.example` added with required JWT secret note.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
 - README atualizado com stack e comandos do TimescaleDB.
+- Go API now refuses to start if `JWT_SECRET` is default/empty.
+- Refresh token now uses current role/tenant/email from DB when issuing new tokens.
 
 ### Removed
 - Express API e serviço `nextjs` do compose (Go API agora é o único ingest).
