@@ -126,6 +126,21 @@ services:
       timeout: 5s
       retries: 5
 
+  swagger_ui:
+    image: swaggerapi/swagger-ui:v5.17.12
+    container_name: iiot_swagger_ui
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    environment:
+      - SWAGGER_JSON=/openapi.yaml
+    volumes:
+      - ./docs/openapi.yaml:/openapi.yaml:ro
+    networks:
+      - iiot_network
+    depends_on:
+      - go_api
+
 networks:
   iiot_network:
     driver: bridge
