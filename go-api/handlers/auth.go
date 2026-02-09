@@ -70,7 +70,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash password
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
 		return
@@ -192,6 +192,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize email
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
 	// Find user
 	var user models.User
 	err := h.DB.QueryRow(context.Background(), `
@@ -267,6 +270,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		User:         user,
 	})
 }
+
 
 // Refresh generates new access token from refresh token
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
