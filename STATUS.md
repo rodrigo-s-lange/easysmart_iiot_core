@@ -5,6 +5,9 @@
 **Última Atualização:** 2026-02-09  
 **Progresso MVP:** base funcional pronta; faltam refinamentos operacionais
 
+**Nota:** Este documento mistura estado atual e arquitetura-alvo.  
+Seção "Fase A" indica o que está **implementado** vs **pendente**.
+
 ---
 
 ## 🎯 Missão Atual: Backend Profissional
