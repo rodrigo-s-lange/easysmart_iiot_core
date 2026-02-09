@@ -23,12 +23,16 @@ Corrigindo falhas que impedem produção profissional:
 - [x] Input validation (validator v10)
 - [x] Error handling básico (request_id + panic recovery)
 - [x] Graceful shutdown
-- [ ] **Isolamento no TimescaleDB**: tabela `telemetry` não tem `tenant_id` nem RLS; isolamento hoje é feito por API/EMQX.
+- [x] **Isolamento no TimescaleDB**: tabela `telemetry` tem `tenant_id` e RLS por tenant.
 
 ### Observabilidade (STATUS)
 - [x] Request ID (X-Request-ID)
 - [x] Logs estruturados (slog)
 - [x] Health checks (/health/live, /health/ready)
+
+### Isolamento de Telemetria (STATUS)
+- [x] TimescaleDB com `tenant_id` na tabela `telemetry`
+- [x] RLS no TimescaleDB por `app.current_tenant_id`
 
 **Tempo estimado:** 6 horas  
 **Prioridade:** P0 (Crítico)

@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - Go API now refuses to start if `JWT_SECRET` is default/empty.
 - Refresh token now uses current role/tenant/email from DB when issuing new tokens.
 - Consolidated multi-tenant tables: `users_v2`/`devices_v2` renamed to `users`/`devices` with RLS enabled. Legacy tables preserved as `users_legacy`/`devices_legacy`.
+- TimescaleDB telemetry agora inclui `tenant_id` com RLS (isolamento por tenant).
 
 ### Removed
 - Express API e serviço `nextjs` do compose (Go API agora é o único ingest).

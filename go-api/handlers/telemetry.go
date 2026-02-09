@@ -79,15 +79,23 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Find device
+	// Find device + tenant
 	var deviceID string
+	var tenantID string
 	err = h.Postgres.QueryRow(context.Background(), `
-		SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
-	`, deviceToken).Scan(&deviceID)
+		SELECT device_id, tenant_id
+		FROM devices
+		WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
+	`, deviceToken).Scan(&deviceID, &tenantID)
 
 	if err != nil {
 		metrics.TelemetryRejected("device_not_found")
 		utils.WriteError(w, http.StatusNotFound, "Device not found or inactive")
+		return
+	}
+	if tenantID == "" {
+		metrics.TelemetryRejected("tenant_missing")
+		utils.WriteError(w, http.StatusNotFound, "Device missing tenant")
 		return
 	}
 
@@ -100,13 +108,44 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert telemetry
-	_, err = h.Timescale.Exec(context.Background(), `
-		INSERT INTO telemetry (device_id, slot, value, timestamp)
-		VALUES ($1, $2, $3, $4)
-	`, deviceID, slot, req.Payload, ts)
+	tx, err := h.Timescale.Begin(context.Background())
+	if err != nil {
+		log.Printf("timescale tx error: %v", err)
+		metrics.TelemetryRejected("db_error")
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	defer tx.Rollback(context.Background())
+
+	// Set tenant context for RLS on TimescaleDB
+	_, err = tx.Exec(context.Background(), `SET LOCAL app.current_tenant_id = $1`, tenantID)
+	if err != nil {
+		log.Printf("timescale set context error: %v", err)
+		metrics.TelemetryRejected("db_error")
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	_, err = tx.Exec(context.Background(), `SET LOCAL app.current_user_role = 'service'`)
+	if err != nil {
+		log.Printf("timescale set context error: %v", err)
+		metrics.TelemetryRejected("db_error")
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	_, err = tx.Exec(context.Background(), `
+		INSERT INTO telemetry (tenant_id, device_id, slot, value, timestamp)
+		VALUES ($1, $2, $3, $4, $5)
+	`, tenantID, deviceID, slot, req.Payload, ts)
 
 	if err != nil {
 		log.Printf("insert error: %v", err)
+		metrics.TelemetryRejected("db_error")
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		log.Printf("timescale commit error: %v", err)
 		metrics.TelemetryRejected("db_error")
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return

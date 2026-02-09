@@ -23,11 +23,15 @@ Plataforma Industrial IoT focada em ingestão MQTT, persistência de telemetria 
 
 **Importante:** O realtime é MQTT direto. O Go API só controla persistência.
 
+### TimescaleDB (isolamento)
+- A tabela `telemetry` inclui `tenant_id` e **RLS** no TimescaleDB.
+- O Go API seta `app.current_tenant_id` na sessão antes do insert.
+
 ## Stack e responsabilidades
 
 - **EMQX 5.5.0** (1883, 8083, 8084, 18083): broker MQTT + Rule Engine.
 - **PostgreSQL 16** (5432): auth, usuários e devices **com RLS por tenant**. Tabelas legadas foram renomeadas para `users_legacy` e `devices_legacy`.
-- **TimescaleDB 2.x** (5433): telemetria (time-series).
+- **TimescaleDB 2.x** (5433): telemetria (time-series) **com `tenant_id` + RLS**.
 - **Redis 7** (6379): rate limit + cache do último valor.
 - **Go API** (3001): webhook de ingestão e endpoints auxiliares.
 - **Cloudflare Tunnel**: WSS externo (`mqtt.easysmart.com.br:443`).
