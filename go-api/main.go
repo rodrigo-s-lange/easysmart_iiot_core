@@ -18,6 +18,9 @@ func main() {
 
 	// Load config
 	cfg := config.Load()
+	if cfg.JWTSecret == "" || cfg.JWTSecret == "change-this-in-production-please" {
+		log.Fatal("JWT_SECRET must be set to a strong value (refusing to start with default/empty)")
+	}
 
 	// Connect to databases
 	db, err := database.Connect(ctx, cfg.PostgresURL(), cfg.TimescaleURL(), cfg.RedisAddr(), cfg.RedisPassword)
@@ -35,7 +38,7 @@ func main() {
 	rateLimitAuth := middleware.NewRateLimitAuth(db.Redis, 10, 60) // 10 attempts per minute
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(db.Postgres, cfg)
+	authHandler := handlers.NewAuthHandler(db.Postgres, db.Redis, cfg)
 	deviceHandler := handlers.NewDeviceHandler(db.Postgres, db.Redis)
 	telemetryHandler := handlers.NewTelemetryHandler(db.Postgres, db.Timescale, db.Redis, cfg)
 
@@ -125,4 +128,3 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
 	})
 }
-

@@ -306,12 +306,15 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify user still exists and is active
+	// Verify user still exists and is active, and fetch current role/tenant/email
 	var status string
+	var role string
+	var tenantID *string
+	var email string
 	err = h.DB.QueryRow(context.Background(),
-		"SELECT status FROM users_v2 WHERE user_id = $1",
+		"SELECT status, role, tenant_id, email FROM users_v2 WHERE user_id = $1",
 		claims.UserID,
-	).Scan(&status)
+	).Scan(&status, &role, &tenantID, &email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			utils.WriteError(w, http.StatusUnauthorized, "User not found")
@@ -327,19 +330,24 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get fresh permissions (in case they changed)
-	permissions, err := h.getPermissions(claims.Role)
+	permissions, err := h.getPermissions(role)
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
 		return
+	}
+
+	tenantIDStr := ""
+	if tenantID != nil {
+		tenantIDStr = *tenantID
 	}
 
 	// Generate new access token
 	accessToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
 		claims.UserID,
-		claims.TenantID,
-		claims.Email,
-		claims.Role,
+		tenantIDStr,
+		email,
+		role,
 		permissions,
 		h.Config.JWTAccessExpiration,
 	)
@@ -352,9 +360,9 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	newRefreshToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
 		claims.UserID,
-		claims.TenantID,
-		claims.Email,
-		claims.Role,
+		tenantIDStr,
+		email,
+		role,
 		permissions,
 		h.Config.JWTRefreshExpiration,
 	)
@@ -450,4 +458,3 @@ func validatePassword(password string) error {
 
 	return nil
 }
-
