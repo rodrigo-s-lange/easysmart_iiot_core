@@ -168,6 +168,8 @@ func main() {
 
 	// Telemetry latest (public for now, can add auth later)
 	mux.HandleFunc("GET /api/telemetry/latest", telemetryHandler.GetLatest)
+	// Telemetry active slots (public for now, can add auth later)
+	mux.HandleFunc("GET /api/telemetry/slots", telemetryHandler.GetActiveSlots)
 
 	// Middleware chain
 	handler := middleware.RequestID(

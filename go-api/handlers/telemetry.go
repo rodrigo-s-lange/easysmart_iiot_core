@@ -11,6 +11,7 @@ import (
 	"iiot-go-api/utils"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -235,6 +236,83 @@ func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusOK, value)
+}
+
+// GetActiveSlots returns slots that have cached latest values (Redis)
+func (h *TelemetryHandler) GetActiveSlots(w http.ResponseWriter, r *http.Request) {
+	deviceIDParam := r.URL.Query().Get("device_id")
+	deviceLabel := r.URL.Query().Get("device_label")
+	deviceToken := r.URL.Query().Get("token") // legacy
+
+	if deviceIDParam == "" && deviceLabel == "" && deviceToken == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id or device_label is required")
+		return
+	}
+
+	// Find device
+	var deviceID string
+	var err error
+	switch {
+	case deviceIDParam != "":
+		err = h.Postgres.QueryRow(context.Background(), `
+			SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
+		`, deviceIDParam).Scan(&deviceID)
+	case deviceLabel != "":
+		err = h.Postgres.QueryRow(context.Background(), `
+			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
+		`, deviceLabel).Scan(&deviceID)
+	default:
+		err = h.Postgres.QueryRow(context.Background(), `
+			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
+		`, deviceToken).Scan(&deviceID)
+	}
+	if err != nil {
+		utils.WriteError(w, http.StatusNotFound, "Device not found or inactive")
+		return
+	}
+
+	if h.Redis == nil {
+		utils.WriteError(w, http.StatusServiceUnavailable, "Cache unavailable")
+		return
+	}
+
+	pattern := fmt.Sprintf("latest:device:%s:slot:*", deviceID)
+	var cursor uint64
+	slotSet := make(map[int]struct{})
+	for {
+		keys, next, err := h.Redis.Scan(context.Background(), cursor, pattern, 200).Result()
+		if err != nil {
+			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+			return
+		}
+		for _, key := range keys {
+			parts := strings.Split(key, ":")
+			if len(parts) == 0 {
+				continue
+			}
+			slotStr := parts[len(parts)-1]
+			slot, err := strconv.Atoi(slotStr)
+			if err != nil {
+				continue
+			}
+			slotSet[slot] = struct{}{}
+		}
+		if next == 0 {
+			break
+		}
+		cursor = next
+	}
+
+	slots := make([]int, 0, len(slotSet))
+	for s := range slotSet {
+		slots = append(slots, s)
+	}
+	sort.Ints(slots)
+
+	utils.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"device_id": deviceID,
+		"slots":     slots,
+	})
 }
 
 // Helper functions

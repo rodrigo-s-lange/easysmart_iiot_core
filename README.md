@@ -145,6 +145,13 @@ CORS_ALLOWED_HEADERS=Authorization,Content-Type
 - Se não houver cache: retorna `200` com `{}`.
 **Nota:** o parâmetro `token` é legado e não deve ser usado.
 
+**Slots ativos (cache Redis)**
+- Por `device_id`:
+  `GET /api/telemetry/slots?device_id=DEVICE_ID`
+- Por `device_label`:
+  `GET /api/telemetry/slots?device_label=DEVICE_LABEL`
+- Retorna lista ordenada de slots que possuem cache.
+
 ## EMQX (auth + rule engine)
 
 ### Auth/ACL (emqx.conf)
