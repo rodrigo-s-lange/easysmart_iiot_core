@@ -32,6 +32,7 @@ func main() {
 	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret)
 	apiKeyMiddleware := middleware.NewAPIKeyMiddleware(db.Postgres, db.Redis)
 	tenantMiddleware := middleware.NewTenantContextMiddleware(db.Postgres)
+	rateLimitAuth := middleware.NewRateLimitAuth(db.Redis, 10, 60) // 10 attempts per minute
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db.Postgres, cfg)
@@ -49,10 +50,10 @@ func main() {
 		})
 	})
 
-	// Auth endpoints (no auth required)
-	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
-	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
-	mux.HandleFunc("POST /api/auth/refresh", authHandler.Refresh)
+	// Auth endpoints (with rate limiting, no JWT auth required)
+	mux.Handle("POST /api/auth/register", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Register)))
+	mux.Handle("POST /api/auth/login", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Login)))
+	mux.Handle("POST /api/auth/refresh", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Refresh)))
 
 	// Device bootstrap (no auth required - devices poll this)
 	mux.HandleFunc("GET /api/devices/bootstrap", deviceHandler.Bootstrap)
@@ -103,9 +104,9 @@ func main() {
 
 	log.Printf("🚀 Go API running on %s", addr)
 	log.Printf("📋 Registered routes:")
-	log.Printf("  POST   /api/auth/register")
-	log.Printf("  POST   /api/auth/login")
-	log.Printf("  POST   /api/auth/refresh")
+	log.Printf("  POST   /api/auth/register (rate limited)")
+	log.Printf("  POST   /api/auth/login (rate limited)")
+	log.Printf("  POST   /api/auth/refresh (rate limited)")
 	log.Printf("  GET    /api/devices/bootstrap")
 	log.Printf("  GET    /api/devices/secret")
 	log.Printf("  POST   /api/devices/claim")
@@ -124,3 +125,4 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
 	})
 }
+
