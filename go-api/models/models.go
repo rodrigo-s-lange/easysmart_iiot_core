@@ -50,8 +50,8 @@ type JWTClaims struct {
 
 // RegisterRequest represents a user registration request
 type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 // RegisterResponse represents a registration response
@@ -64,8 +64,8 @@ type RegisterResponse struct {
 
 // LoginRequest represents a login request
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 // LoginResponse represents a login response
@@ -78,7 +78,7 @@ type LoginResponse struct {
 
 // RefreshRequest represents a token refresh request
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 // RefreshResponse represents a token refresh response
@@ -90,8 +90,8 @@ type RefreshResponse struct {
 
 // ClaimDeviceRequest represents a device claim request
 type ClaimDeviceRequest struct {
-	DeviceID  string `json:"device_id"`
-	ClaimCode string `json:"claim_code"`
+	DeviceID  string `json:"device_id" validate:"required"`
+	ClaimCode string `json:"claim_code" validate:"required"`
 }
 
 // ClaimDeviceResponse represents a device claim response
@@ -109,16 +109,16 @@ type BootstrapResponse struct {
 
 // BootstrapRequest represents device bootstrap polling
 type BootstrapRequest struct {
-	DeviceID  string `json:"device_id"`
-	Timestamp string `json:"timestamp"`
-	Signature string `json:"signature"`
+	DeviceID  string `json:"device_id" validate:"required"`
+	Timestamp string `json:"timestamp" validate:"required"`
+	Signature string `json:"signature" validate:"required"`
 }
 
 // SecretRequest represents device secret retrieval
 type SecretRequest struct {
-	DeviceID  string `json:"device_id"`
-	Timestamp string `json:"timestamp"`
-	Signature string `json:"signature"`
+	DeviceID  string `json:"device_id" validate:"required"`
+	Timestamp string `json:"timestamp" validate:"required"`
+	Signature string `json:"signature" validate:"required"`
 }
 
 // SecretResponse represents a secret retrieval response
@@ -129,8 +129,8 @@ type SecretResponse struct {
 
 // ResetDeviceRequest represents device reset request
 type ResetDeviceRequest struct {
-	DeviceID      string `json:"device_id"`
-	Confirmation  string `json:"confirmation"`
+	DeviceID     string `json:"device_id" validate:"required"`
+	Confirmation string `json:"confirmation" validate:"required"`
 }
 
 // ErrorResponse represents an error response
@@ -141,8 +141,8 @@ type ErrorResponse struct {
 // TelemetryRequest represents a telemetry webhook request
 type TelemetryRequest struct {
 	ClientID  string          `json:"clientid"`
-	Topic     string          `json:"topic"`
-	Payload   json.RawMessage `json:"payload"`
+	Topic     string          `json:"topic" validate:"required"`
+	Payload   json.RawMessage `json:"payload" validate:"required"`
 	Timestamp string          `json:"timestamp"`
 }
 

@@ -39,6 +39,10 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
+		return
+	}
 	req.DeviceID = strings.TrimSpace(req.DeviceID)
 	req.ClaimCode = strings.TrimSpace(req.ClaimCode)
 	if req.DeviceID == "" || req.ClaimCode == "" {
@@ -141,6 +145,10 @@ func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
+		return
+	}
 	req.DeviceID = strings.TrimSpace(req.DeviceID)
 	req.Signature = strings.TrimSpace(req.Signature)
 	req.Timestamp = strings.TrimSpace(req.Timestamp)
@@ -189,6 +197,10 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	var req models.SecretRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
 		return
 	}
 	req.DeviceID = strings.TrimSpace(req.DeviceID)
@@ -275,6 +287,10 @@ func (h *DeviceHandler) ResetDevice(w http.ResponseWriter, r *http.Request) {
 	var req models.ResetDeviceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
 		return
 	}
 	req.DeviceID = strings.TrimSpace(req.DeviceID)

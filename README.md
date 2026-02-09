@@ -101,6 +101,8 @@ mosquitto_sub -h 192.168.0.99 -p 1883 \
 **Health**
 ```bash
 curl http://localhost:3001/health
+curl http://localhost:3001/health/live
+curl http://localhost:3001/health/ready
 ```
 
 **Webhook (EMQX Rule Engine)**

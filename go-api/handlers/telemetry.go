@@ -48,6 +48,10 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
+		return
+	}
 
 	deviceToken, slot, err := parseTopic(req.Topic)
 	if err != nil {

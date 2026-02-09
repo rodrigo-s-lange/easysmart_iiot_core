@@ -20,9 +20,14 @@ Corrigindo falhas que impedem produção profissional:
 - [x] JWT secret enforcement (fail startup if default/empty)
 - [x] Rate limit auth (Redis, 10/min por IP)
 - [x] CORS middleware (configurável por env)
-- [ ] Input validation
-- [ ] Error handling estruturado
-- [ ] Graceful shutdown
+- [x] Input validation (validator v10)
+- [x] Error handling básico (request_id + panic recovery)
+- [x] Graceful shutdown
+
+### Observabilidade (STATUS)
+- [x] Request ID (X-Request-ID)
+- [x] Logs estruturados (slog)
+- [x] Health checks (/health/live, /health/ready)
 
 **Tempo estimado:** 6 horas  
 **Prioridade:** P0 (Crítico)

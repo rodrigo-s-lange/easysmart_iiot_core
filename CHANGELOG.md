@@ -16,6 +16,12 @@ All notable changes to this project will be documented in this file.
 - Provisioning migration `003_device_provisioning_claim_code.sql` (adds `claim_code_hash`, `secret_delivered_at`).
 - Env vars for provisioning: `MANUFACTURING_MASTER_KEY`, `BOOTSTRAP_MAX_SKEW_SECS`.
 - `.env.example` added with required JWT secret note.
+- Input validation via validator v10.
+- Request ID middleware (`X-Request-ID`).
+- Health endpoints: `/health/live` and `/health/ready`.
+- Panic recovery middleware (JSON 500).
+- Structured logging (slog).
+- Graceful shutdown (configurable timeout).
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).

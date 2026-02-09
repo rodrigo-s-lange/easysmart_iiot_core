@@ -41,6 +41,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
+		return
+	}
 
 	// Validate email format
 	if !isValidEmail(req.Email) {
@@ -201,6 +205,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
+		return
+	}
 
 	// Normalize email
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
@@ -289,6 +297,10 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req models.RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
 		return
 	}
 

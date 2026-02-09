@@ -14,5 +14,9 @@ func WriteJSON(w http.ResponseWriter, status int, payload interface{}) {
 
 // WriteError writes error response
 func WriteError(w http.ResponseWriter, status int, message string) {
-	WriteJSON(w, status, map[string]string{"error": message})
+	resp := map[string]string{"error": message}
+	if reqID := w.Header().Get("X-Request-ID"); reqID != "" {
+		resp["request_id"] = reqID
+	}
+	WriteJSON(w, status, resp)
 }

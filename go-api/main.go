@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"iiot-go-api/config"
@@ -15,6 +19,10 @@ import (
 
 func main() {
 	ctx := context.Background()
+
+	// Structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
 
 	// Load config
 	cfg := config.Load()
@@ -32,7 +40,7 @@ func main() {
 	}
 	defer db.Close()
 
-	log.Println("✅ Database connections established")
+	slog.Info("database_connections_established")
 
 	// Initialize middlewares
 	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret)
@@ -49,7 +57,59 @@ func main() {
 	// Setup routes
 	mux := http.NewServeMux()
 
-	// Health check
+	// Health checks
+	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) {
+		utils.WriteJSON(w, http.StatusOK, map[string]string{
+			"status":    "ok",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		checks := map[string]string{}
+		ready := true
+
+		if err := db.Postgres.Ping(ctx); err != nil {
+			checks["postgres"] = "error"
+			ready = false
+		} else {
+			checks["postgres"] = "ok"
+		}
+
+		if err := db.Timescale.Ping(ctx); err != nil {
+			checks["timescale"] = "error"
+			ready = false
+		} else {
+			checks["timescale"] = "ok"
+		}
+
+		if db.Redis != nil {
+			if err := db.Redis.Ping(ctx).Err(); err != nil {
+				checks["redis"] = "error"
+				ready = false
+			} else {
+				checks["redis"] = "ok"
+			}
+		} else {
+			checks["redis"] = "unavailable"
+		}
+
+		status := http.StatusOK
+		result := "ok"
+		if !ready {
+			status = http.StatusServiceUnavailable
+			result = "degraded"
+		}
+
+		utils.WriteJSON(w, status, map[string]interface{}{
+			"status":    result,
+			"checks":    checks,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJSON(w, http.StatusOK, map[string]string{
 			"status":    "ok",
@@ -105,8 +165,14 @@ func main() {
 	// Telemetry latest (public for now, can add auth later)
 	mux.HandleFunc("GET /api/telemetry/latest", telemetryHandler.GetLatest)
 
-	// Logging middleware
-	handler := loggingMiddleware(corsConfig.Handle(mux))
+	// Middleware chain
+	handler := middleware.RequestID(
+		middleware.Logging(
+			middleware.Recover(
+				corsConfig.Handle(mux),
+			),
+		),
+	)
 
 	// Start server
 	addr := ":" + cfg.Port
@@ -118,27 +184,27 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("🚀 Go API running on %s", addr)
-	log.Printf("📋 Registered routes:")
-	log.Printf("  POST   /api/auth/register (rate limited)")
-	log.Printf("  POST   /api/auth/login (rate limited)")
-	log.Printf("  POST   /api/auth/refresh (rate limited)")
-	log.Printf("  POST   /api/devices/bootstrap")
-	log.Printf("  POST   /api/devices/secret")
-	log.Printf("  POST   /api/devices/claim")
-	log.Printf("  GET    /api/devices")
-	log.Printf("  POST   /api/devices/reset")
-	log.Printf("  POST   /api/telemetry")
-	log.Printf("  GET    /api/telemetry/latest")
-	log.Printf("  GET    /health")
-	
-	log.Fatal(server.ListenAndServe())
-}
+	slog.Info("server_start",
+		slog.String("addr", addr),
+	)
 
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
-	})
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server_error", slog.Any("error", err))
+		}
+	}()
+
+	// Graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+	<-stop
+
+	slog.Info("server_shutdown_start")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownTimeoutSecs)*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server_shutdown_error", slog.Any("error", err))
+	} else {
+		slog.Info("server_shutdown_complete")
+	}
 }

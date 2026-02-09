@@ -50,6 +50,9 @@ type Config struct {
 	// Manufacturing / provisioning
 	ManufacturingMasterKey string
 	BootstrapMaxSkewSecs   int64
+
+	// Server shutdown
+	ShutdownTimeoutSecs int64
 }
 
 func Load() *Config {
@@ -89,6 +92,8 @@ func Load() *Config {
 
 		ManufacturingMasterKey: getEnv("MANUFACTURING_MASTER_KEY", "change-this-manufacturing-key"),
 		BootstrapMaxSkewSecs:   getEnvInt64("BOOTSTRAP_MAX_SKEW_SECS", 300),
+
+		ShutdownTimeoutSecs: getEnvInt64("SHUTDOWN_TIMEOUT_SECS", 30),
 	}
 }
 
