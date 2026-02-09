@@ -71,7 +71,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Check if email already exists
 	var exists bool
-	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users_v2 WHERE email = $1)", req.Email).Scan(&exists)
+	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", req.Email).Scan(&exists)
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
 		return
@@ -90,7 +90,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Check if this is the first user (should become super_admin)
 	var userCount int
-	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM users_v2").Scan(&userCount)
+	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&userCount)
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
 		return
@@ -126,7 +126,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Create user
 	userID := uuid.New().String()
 	err = tx.QueryRow(ctx, `
-		INSERT INTO users_v2 (user_id, tenant_id, email, password_hash, role, status, email_verified)
+		INSERT INTO users (user_id, tenant_id, email, password_hash, role, status, email_verified)
 		VALUES ($1, $2, $3, $4, $5, 'active', true)
 		RETURNING user_id
 	`, userID, tenantID, req.Email, string(passwordHash), role).Scan(&userID)
@@ -217,7 +217,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	err := h.DB.QueryRow(context.Background(), `
 		SELECT user_id, tenant_id, email, password_hash, role, status
-		FROM users_v2
+		FROM users
 		WHERE email = $1
 	`, req.Email).Scan(&user.UserID, &user.TenantID, &user.Email, &user.PasswordHash, &user.Role, &user.Status)
 
@@ -281,7 +281,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update last_login_at
-	h.DB.Exec(context.Background(), "UPDATE users_v2 SET last_login_at = NOW() WHERE user_id = $1", user.UserID)
+	h.DB.Exec(context.Background(), "UPDATE users SET last_login_at = NOW() WHERE user_id = $1", user.UserID)
 
 	utils.WriteJSON(w, http.StatusOK, models.LoginResponse{
 		AccessToken:  accessToken,
@@ -334,7 +334,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var tenantID *string
 	var email string
 	err = h.DB.QueryRow(context.Background(),
-		"SELECT status, role, tenant_id, email FROM users_v2 WHERE user_id = $1",
+		"SELECT status, role, tenant_id, email FROM users WHERE user_id = $1",
 		claims.UserID,
 	).Scan(&status, &role, &tenantID, &email)
 	if err != nil {

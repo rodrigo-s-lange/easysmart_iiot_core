@@ -23,6 +23,7 @@ Corrigindo falhas que impedem produção profissional:
 - [x] Input validation (validator v10)
 - [x] Error handling básico (request_id + panic recovery)
 - [x] Graceful shutdown
+- [ ] **Isolamento no TimescaleDB**: tabela `telemetry` não tem `tenant_id` nem RLS; isolamento hoje é feito por API/EMQX.
 
 ### Observabilidade (STATUS)
 - [x] Request ID (X-Request-ID)
@@ -92,7 +93,7 @@ Tunnel:     Cloudflare (WSS público)
 - quota_devices, quota_messages_per_hour
 - created_at, updated_at
 
-**users_v2** (User management + RBAC)
+**users** (User management + RBAC)
 - user_id (UUID PK)
 - tenant_id (FK, NULL for super_admin)
 - email (unique), password_hash (bcrypt)
@@ -100,7 +101,7 @@ Tunnel:     Cloudflare (WSS público)
 - status (active/suspended/deleted)
 - last_login_at
 
-**devices_v2** (Device lifecycle)
+**devices** (Device lifecycle)
 - device_id (UUID PK)
 - tenant_id (FK)
 - owner_user_id (FK)
@@ -110,6 +111,9 @@ Tunnel:     Cloudflare (WSS público)
 - claimed_at, activated_at, last_seen_at
 - firmware_version, hardware_revision
 - metadata (JSONB)
+
+**Legado**
+- `users_legacy` e `devices_legacy` preservam o schema antigo (não usados pela API).
 
 **permissions** (RBAC permissions)
 - permission_id (UUID PK)
@@ -150,7 +154,7 @@ Tunnel:     Cloudflare (WSS público)
 SELECT device_label AS username,
        secret_hash AS password_hash,
        'bcrypt' AS password_hash_algorithm
-FROM devices_v2
+FROM devices
 WHERE status IN ('active', 'claimed') AND secret_hash IS NOT NULL
 ```
 
@@ -175,7 +179,7 @@ tenants/{tenant_id}/devices/{device_id}/status
 ### Row-Level Security (Defense-in-Depth)
 
 ```sql
-CREATE POLICY tenant_isolation_devices ON devices_v2
+CREATE POLICY tenant_isolation_devices ON devices
 FOR ALL USING (
     tenant_id = current_setting('app.current_tenant_id', true)::uuid
     OR current_setting('app.current_user_role', true) = 'super_admin'
@@ -210,7 +214,7 @@ FOR ALL USING (
 ```
 Factory Phase:
 1. Device has: device_id (público), device_label (MQTT username), claim_code (privado)
-2. DB: devices_v2.status = unclaimed, claim_code_hash = bcrypt(claim_code)
+2. DB: devices.status = unclaimed, claim_code_hash = bcrypt(claim_code)
 
 Bootstrap (Device):
 3. POST /api/devices/bootstrap

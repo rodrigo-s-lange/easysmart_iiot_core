@@ -43,7 +43,7 @@ COMMENT ON TABLE tenants IS 'Multi-tenant organizations (Phase 2)';
 
 CREATE TYPE user_role AS ENUM ('super_admin', 'tenant_admin', 'tenant_user');
 
-CREATE TABLE users_v2 (
+CREATE TABLE users (
     user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(tenant_id) ON DELETE CASCADE,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -61,11 +61,11 @@ CREATE TABLE users_v2 (
     )
 );
 
-CREATE INDEX idx_users_v2_email ON users_v2(email);
-CREATE INDEX idx_users_v2_tenant ON users_v2(tenant_id) WHERE tenant_id IS NOT NULL;
-CREATE INDEX idx_users_v2_role ON users_v2(role);
+CREATE INDEX idx_users_v2_email ON users(email);
+CREATE INDEX idx_users_v2_tenant ON users(tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX idx_users_v2_role ON users(role);
 
-COMMENT ON TABLE users_v2 IS 'Multi-tenant users with RBAC (Phase 2)';
+COMMENT ON TABLE users IS 'Multi-tenant users with RBAC (Phase 2)';
 
 -- ============================================================================
 -- NEW TABLES: DEVICES (multi-tenant version)
@@ -73,10 +73,10 @@ COMMENT ON TABLE users_v2 IS 'Multi-tenant users with RBAC (Phase 2)';
 
 CREATE TYPE device_status AS ENUM ('unclaimed', 'claimed', 'active', 'suspended', 'revoked');
 
-CREATE TABLE devices_v2 (
+CREATE TABLE devices (
     device_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    owner_user_id UUID REFERENCES users_v2(user_id) ON DELETE SET NULL,
+    owner_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
     
     -- Public identifier (printed on device label)
     device_label VARCHAR(50) UNIQUE NOT NULL,
@@ -110,12 +110,12 @@ CREATE TABLE devices_v2 (
     )
 );
 
-CREATE INDEX idx_devices_v2_tenant ON devices_v2(tenant_id) WHERE tenant_id IS NOT NULL;
-CREATE INDEX idx_devices_v2_owner ON devices_v2(owner_user_id) WHERE owner_user_id IS NOT NULL;
-CREATE INDEX idx_devices_v2_status ON devices_v2(status);
-CREATE INDEX idx_devices_v2_label ON devices_v2(device_label);
+CREATE INDEX idx_devices_v2_tenant ON devices(tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX idx_devices_v2_owner ON devices(owner_user_id) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX idx_devices_v2_status ON devices(status);
+CREATE INDEX idx_devices_v2_label ON devices(device_label);
 
-COMMENT ON TABLE devices_v2 IS 'Multi-tenant devices with claim/unclaim lifecycle (Phase 2)';
+COMMENT ON TABLE devices IS 'Multi-tenant devices with claim/unclaim lifecycle (Phase 2)';
 
 -- ============================================================================
 -- PERMISSIONS & RBAC
@@ -169,8 +169,8 @@ WHERE name IN ('devices:read', 'devices:write', 'devices:provision', 'telemetry:
 CREATE TABLE audit_log (
     audit_id BIGSERIAL PRIMARY KEY,
     tenant_id UUID REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users_v2(user_id) ON DELETE SET NULL,
-    device_id UUID REFERENCES devices_v2(device_id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    device_id UUID REFERENCES devices(device_id) ON DELETE SET NULL,
     
     event_type VARCHAR(100) NOT NULL,
     event_category VARCHAR(50) NOT NULL,
@@ -219,7 +219,7 @@ COMMENT ON TABLE audit_log IS 'Audit trail for compliance (LGPD/GDPR)';
 CREATE TABLE api_keys (
     key_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users_v2(user_id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
     
     name VARCHAR(100) NOT NULL,
     key_hash VARCHAR(255) NOT NULL,
@@ -250,7 +250,7 @@ SELECT
     device_label AS username,
     secret_hash AS password_hash,
     'bcrypt' AS password_hash_algorithm
-FROM devices_v2
+FROM devices
 WHERE status IN ('active', 'claimed')
 AND secret_hash IS NOT NULL;
 
@@ -263,7 +263,7 @@ SELECT
     'allow' AS permission,
     'publish' AS action,
     'tenants/' || tenant_id || '/devices/' || device_id || '/telemetry/#' AS topic
-FROM devices_v2
+FROM devices
 WHERE status IN ('active', 'claimed')
 AND tenant_id IS NOT NULL
 
@@ -274,7 +274,7 @@ SELECT
     'allow' AS permission,
     'publish' AS action,
     'tenants/' || tenant_id || '/devices/' || device_id || '/events/#' AS topic
-FROM devices_v2
+FROM devices
 WHERE status IN ('active', 'claimed')
 
 UNION ALL
@@ -284,7 +284,7 @@ SELECT
     'allow' AS permission,
     'subscribe' AS action,
     'tenants/' || tenant_id || '/devices/' || device_id || '/commands/#' AS topic
-FROM devices_v2
+FROM devices
 WHERE status IN ('active', 'claimed')
 
 UNION ALL
@@ -294,7 +294,7 @@ SELECT
     'allow' AS permission,
     'publish' AS action,
     'tenants/' || tenant_id || '/devices/' || device_id || '/status' AS topic
-FROM devices_v2
+FROM devices
 WHERE status IN ('active', 'claimed');
 
 COMMENT ON VIEW emqx_acl_v2 IS 'EMQX ACL query (tenant-scoped topics)';
@@ -303,18 +303,18 @@ COMMENT ON VIEW emqx_acl_v2 IS 'EMQX ACL query (tenant-scoped topics)';
 -- ROW-LEVEL SECURITY (Phase 2)
 -- ============================================================================
 
-ALTER TABLE devices_v2 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users_v2 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation_devices ON devices_v2
+CREATE POLICY tenant_isolation_devices ON devices
     FOR ALL
     USING (
         tenant_id = current_setting('app.current_tenant_id', true)::uuid
         OR current_setting('app.current_user_role', true) = 'super_admin'
     );
 
-CREATE POLICY tenant_isolation_users ON users_v2
+CREATE POLICY tenant_isolation_users ON users
     FOR ALL
     USING (
         tenant_id = current_setting('app.current_tenant_id', true)::uuid
@@ -343,10 +343,10 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_tenants_updated_at BEFORE UPDATE ON tenants
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_v2();
 
-CREATE TRIGGER trg_users_v2_updated_at BEFORE UPDATE ON users_v2
+CREATE TRIGGER trg_users_v2_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_v2();
 
-CREATE TRIGGER trg_devices_v2_updated_at BEFORE UPDATE ON devices_v2
+CREATE TRIGGER trg_devices_v2_updated_at BEFORE UPDATE ON devices
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_v2();
 
 -- Audit trigger
@@ -375,7 +375,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_audit_device_lifecycle
-    AFTER INSERT OR UPDATE OR DELETE ON devices_v2
+    AFTER INSERT OR UPDATE OR DELETE ON devices
     FOR EACH ROW EXECUTE FUNCTION audit_device_lifecycle();
 
 -- ============================================================================
@@ -401,7 +401,7 @@ DECLARE
 BEGIN
     -- Lock device row
     SELECT d.device_id, d.status INTO v_device_id, v_current_status
-    FROM devices_v2 d
+    FROM devices d
     WHERE d.device_label = p_device_label
     FOR UPDATE;
 
@@ -419,14 +419,14 @@ BEGIN
     v_device_secret := encode(gen_random_bytes(32), 'hex');
 
     -- Update device
-    UPDATE devices_v2 SET
+    UPDATE devices SET
         tenant_id = p_tenant_id,
         owner_user_id = p_user_id,
         secret_hash = crypt(v_device_secret, gen_salt('bf', 12)),
         status = 'claimed',
         claimed_at = NOW(),
         updated_at = NOW()
-    WHERE devices_v2.device_id = v_device_id;
+    WHERE devices.device_id = v_device_id;
 
     -- Return plaintext secret (only time it exists)
     RETURN QUERY SELECT v_device_id, v_device_secret, TRUE, NULL::TEXT;
@@ -444,40 +444,46 @@ INSERT INTO tenants (tenant_id, name, slug, status)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Default Tenant', 'default', 'active')
 ON CONFLICT DO NOTHING;
 
--- Migrate existing users to users_v2
-INSERT INTO users_v2 (user_id, tenant_id, email, password_hash, role, status, created_at, metadata)
-SELECT 
-    id AS user_id,
-    '00000000-0000-0000-0000-000000000001' AS tenant_id,
-    email,
-    password_hash,
-    'tenant_admin'::user_role AS role,
-    CASE status 
-        WHEN 'active' THEN 'active'
-        WHEN 'suspended' THEN 'suspended'
-        WHEN 'deleted' THEN 'deleted'
-    END AS status,
-    created_at,
-    jsonb_build_object('plan', plan, 'max_devices', max_devices, 'retention_days', retention_days)
-FROM users
-ON CONFLICT (email) DO NOTHING;
+-- Optional migration from legacy tables (if they exist)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'users_legacy') THEN
+        INSERT INTO users (user_id, tenant_id, email, password_hash, role, status, created_at, metadata)
+        SELECT
+            id AS user_id,
+            '00000000-0000-0000-0000-000000000001' AS tenant_id,
+            email,
+            password_hash,
+            'tenant_admin'::user_role AS role,
+            CASE status
+                WHEN 'active' THEN 'active'
+                WHEN 'suspended' THEN 'suspended'
+                WHEN 'deleted' THEN 'deleted'
+            END AS status,
+            created_at,
+            jsonb_build_object('plan', plan, 'max_devices', max_devices, 'retention_days', retention_days)
+        FROM users_legacy
+        ON CONFLICT (email) DO NOTHING;
+    END IF;
 
--- Migrate existing devices to devices_v2 WITH bcrypt hash
-INSERT INTO devices_v2 (device_id, tenant_id, owner_user_id, device_label, secret_hash, status, firmware_version, last_seen_at, created_at, activated_at, metadata)
-SELECT 
-    id AS device_id,
-    '00000000-0000-0000-0000-000000000001' AS tenant_id,
-    user_id AS owner_user_id,
-    token::text AS device_label,
-    crypt(token::text, gen_salt('bf', 12)) AS secret_hash,
-    'active'::device_status AS status,
-    firmware_version,
-    last_seen AS last_seen_at,
-    created_at,
-    created_at AS activated_at,
-    jsonb_build_object('name', name, 'hw_type', hw_type) || COALESCE(metadata, '{}'::jsonb)
-FROM devices
-ON CONFLICT (device_label) DO NOTHING;
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'devices_legacy') THEN
+        INSERT INTO devices (device_id, tenant_id, owner_user_id, device_label, secret_hash, status, firmware_version, last_seen_at, created_at, activated_at, metadata)
+        SELECT
+            id AS device_id,
+            '00000000-0000-0000-0000-000000000001' AS tenant_id,
+            user_id AS owner_user_id,
+            token::text AS device_label,
+            crypt(token::text, gen_salt('bf', 12)) AS secret_hash,
+            'active'::device_status AS status,
+            firmware_version,
+            last_seen AS last_seen_at,
+            created_at,
+            created_at AS activated_at,
+            jsonb_build_object('name', name, 'hw_type', hw_type) || COALESCE(metadata, '{}'::jsonb)
+        FROM devices_legacy
+        ON CONFLICT (device_label) DO NOTHING;
+    END IF;
+END $$;
 
 -- ============================================================================
 -- COMPATIBILITY VIEWS (temporary)
@@ -501,7 +507,7 @@ SELECT
     metadata,
     created_at,
     updated_at
-FROM devices_v2
+FROM devices
 WHERE tenant_id = '00000000-0000-0000-0000-000000000001';
 
 COMMENT ON VIEW devices_compat IS 'Compatibility view for old queries (remove in Phase 3)';
@@ -515,7 +521,6 @@ COMMIT;
 -- Next steps:
 -- 1. Update EMQX config to use emqx_auth_v2 and emqx_acl_v2
 -- 2. Restart EMQX: docker-compose restart iiot_emqx
--- 3. Update Go API to use devices_v2, users_v2, tenants
+-- 3. Update Go API to use devices, users, tenants
 -- 4. Test device claim flow
 -- 5. After validation, drop old tables (migration 003)
-

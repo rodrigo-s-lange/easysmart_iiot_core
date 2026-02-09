@@ -65,7 +65,7 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 	var claimCodeHash sql.NullString
 	err = tx.QueryRow(ctx, `
 		SELECT status, claim_code_hash
-		FROM devices_v2
+		FROM devices
 		WHERE device_id = $1::uuid
 		FOR UPDATE
 	`, req.DeviceID).Scan(&status, &claimCodeHash)
@@ -103,7 +103,7 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 
 	// Claim device
 	_, err = tx.Exec(ctx, `
-		UPDATE devices_v2
+		UPDATE devices
 		SET tenant_id = $1::uuid,
 			owner_user_id = $2::uuid,
 			status = 'claimed',
@@ -170,7 +170,7 @@ func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	var status string
 	err := h.DB.QueryRow(context.Background(), `
 		SELECT status
-		FROM devices_v2
+		FROM devices
 		WHERE device_id = $1::uuid
 	`, req.DeviceID).Scan(&status)
 	if err != nil {
@@ -180,7 +180,7 @@ func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 
 	// Update last seen
 	h.DB.Exec(context.Background(), `
-		UPDATE devices_v2
+		UPDATE devices
 		SET last_seen_at = NOW()
 		WHERE device_id = $1::uuid
 	`, req.DeviceID)
@@ -225,7 +225,7 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	var status string
 	err := h.DB.QueryRow(context.Background(), `
 		SELECT status
-		FROM devices_v2
+		FROM devices
 		WHERE device_id = $1::uuid
 	`, req.DeviceID).Scan(&status)
 	if err != nil {
@@ -259,7 +259,7 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, err = h.DB.Exec(context.Background(), `
-			UPDATE devices_v2
+			UPDATE devices
 			SET secret_hash = $1, secret_delivered_at = NOW()
 			WHERE device_id = $2::uuid
 		`, string(secretHash), req.DeviceID)
@@ -269,7 +269,7 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		h.DB.Exec(context.Background(), `
-			UPDATE devices_v2
+			UPDATE devices
 			SET secret_delivered_at = NOW()
 			WHERE device_id = $1::uuid
 		`, req.DeviceID)
@@ -307,7 +307,7 @@ func (h *DeviceHandler) ResetDevice(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if role == "super_admin" || role == "tenant_admin" {
 		tag, err = h.DB.Exec(context.Background(), `
-			UPDATE devices_v2
+			UPDATE devices
 			SET tenant_id = NULL,
 				owner_user_id = NULL,
 				status = 'unclaimed',
@@ -319,7 +319,7 @@ func (h *DeviceHandler) ResetDevice(w http.ResponseWriter, r *http.Request) {
 		`, req.DeviceID, tenantID)
 	} else {
 		tag, err = h.DB.Exec(context.Background(), `
-			UPDATE devices_v2
+			UPDATE devices
 			SET tenant_id = NULL,
 				owner_user_id = NULL,
 				status = 'unclaimed',
@@ -356,7 +356,7 @@ func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(context.Background(), `
 		SELECT device_id, device_label, status, firmware_version, last_seen_at, created_at
-		FROM devices_v2
+		FROM devices
 		WHERE tenant_id = $1
 		ORDER BY created_at DESC
 	`, tenantID)

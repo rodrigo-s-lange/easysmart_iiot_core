@@ -82,7 +82,7 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	// Find device
 	var deviceID string
 	err = h.Postgres.QueryRow(context.Background(), `
-		SELECT device_id FROM devices_v2 WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
+		SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
 	`, deviceToken).Scan(&deviceID)
 
 	if err != nil {
@@ -121,7 +121,7 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 
 	// Update last_seen
 	h.Postgres.Exec(context.Background(), `
-		UPDATE devices_v2 SET last_seen_at = NOW(), status = 'active' WHERE device_id = $1
+		UPDATE devices SET last_seen_at = NOW(), status = 'active' WHERE device_id = $1
 	`, deviceID)
 
 	utils.WriteJSON(w, http.StatusOK, map[string]interface{}{
@@ -150,7 +150,7 @@ func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 	// Find device
 	var deviceID string
 	err = h.Postgres.QueryRow(context.Background(), `
-		SELECT device_id FROM devices_v2 WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
+		SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
 	`, deviceToken).Scan(&deviceID)
 
 	if err != nil {

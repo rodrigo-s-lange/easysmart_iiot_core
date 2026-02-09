@@ -26,7 +26,7 @@ Plataforma Industrial IoT focada em ingestão MQTT, persistência de telemetria 
 ## Stack e responsabilidades
 
 - **EMQX 5.5.0** (1883, 8083, 8084, 18083): broker MQTT + Rule Engine.
-- **PostgreSQL 16** (5432): auth, usuários, devices, comandos.
+- **PostgreSQL 16** (5432): auth, usuários e devices **com RLS por tenant**. Tabelas legadas foram renomeadas para `users_legacy` e `devices_legacy`.
 - **TimescaleDB 2.x** (5433): telemetria (time-series).
 - **Redis 7** (6379): rate limit + cache do último valor.
 - **Go API** (3001): webhook de ingestão e endpoints auxiliares.
