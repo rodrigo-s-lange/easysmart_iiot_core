@@ -38,6 +38,7 @@ type Device struct {
 // JWTClaims represents JWT token claims
 type JWTClaims struct {
 	JTI         string   `json:"jti"`
+	TokenType   string   `json:"token_type"`
 	UserID      string   `json:"user_id"`
 	TenantID    string   `json:"tenant_id"`
 	Email       string   `json:"email"`
@@ -131,4 +132,3 @@ type LatestTelemetry struct {
 	Value     json.RawMessage `json:"value"`
 	Timestamp string          `json:"timestamp"`
 }
-

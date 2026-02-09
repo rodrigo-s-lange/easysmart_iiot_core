@@ -41,6 +41,11 @@ type Config struct {
 	
 	// Cache
 	CacheTTLSeconds int64
+
+	// CORS
+	CORSAllowedOrigins string
+	CORSAllowedMethods string
+	CORSAllowedHeaders string
 }
 
 func Load() *Config {
@@ -73,6 +78,10 @@ func Load() *Config {
 		RateLimitFailOpen:     getEnvBool("RATE_LIMIT_FAIL_OPEN", true),
 		
 		CacheTTLSeconds: getEnvInt64("CACHE_TTL_SECONDS", 0),
+
+		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", ""),
+		CORSAllowedMethods: getEnv("CORS_ALLOWED_METHODS", "GET,POST,PUT,DELETE,OPTIONS"),
+		CORSAllowedHeaders: getEnv("CORS_ALLOWED_HEADERS", "Authorization,Content-Type"),
 	}
 }
 

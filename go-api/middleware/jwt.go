@@ -34,6 +34,10 @@ func (m *JWTMiddleware) Authenticate(next http.Handler) http.Handler {
 			utils.WriteError(w, http.StatusUnauthorized, "Invalid token")
 			return
 		}
+		if claims.TokenType != "" && claims.TokenType != "access" {
+			utils.WriteError(w, http.StatusUnauthorized, "Invalid token")
+			return
+		}
 
 		// Add claims to context
 		ctx := r.Context()
@@ -46,4 +50,3 @@ func (m *JWTMiddleware) Authenticate(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-

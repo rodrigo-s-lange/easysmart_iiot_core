@@ -6,6 +6,7 @@ import (
 	"iiot-go-api/utils"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -32,7 +33,9 @@ func (rl *RateLimitAuth) Limit(next http.Handler) http.Handler {
 		// Get client IP (handle X-Forwarded-For for proxies)
 		clientIP := r.RemoteAddr
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			clientIP = xff
+			// Use only the first IP in the list
+			parts := strings.Split(xff, ",")
+			clientIP = strings.TrimSpace(parts[0])
 		}
 		if xri := r.Header.Get("X-Real-IP"); xri != "" {
 			clientIP = xri
@@ -72,4 +75,3 @@ func (rl *RateLimitAuth) Limit(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-

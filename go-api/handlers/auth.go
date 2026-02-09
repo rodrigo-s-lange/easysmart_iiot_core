@@ -152,6 +152,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
+		"access",
 		userID,
 		tenantIDStr,
 		req.Email,
@@ -166,6 +167,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	refreshToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
+		"refresh",
 		userID,
 		tenantIDStr,
 		req.Email,
@@ -242,6 +244,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
+		"access",
 		user.UserID,
 		tenantID,
 		user.Email,
@@ -256,6 +259,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	refreshToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
+		"refresh",
 		user.UserID,
 		tenantID,
 		user.Email,
@@ -294,12 +298,18 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusUnauthorized, "Invalid refresh token")
 		return
 	}
+	if claims.TokenType != "refresh" {
+		utils.WriteError(w, http.StatusUnauthorized, "Invalid refresh token")
+		return
+	}
 
 	// Check if token is blacklisted (already used)
 	blacklisted, err := utils.IsTokenBlacklisted(h.Redis, claims.JTI)
 	if err != nil {
-		// Log error but continue (fail-open for availability)
+		// Fail-closed for refresh security
 		log.Printf("Error checking token blacklist: %v", err)
+		utils.WriteError(w, http.StatusServiceUnavailable, "Token validation unavailable")
+		return
 	}
 	if blacklisted {
 		utils.WriteError(w, http.StatusUnauthorized, "Refresh token already used")
@@ -344,6 +354,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// Generate new access token
 	accessToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
+		"access",
 		claims.UserID,
 		tenantIDStr,
 		email,
@@ -359,6 +370,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// Generate new refresh token (token rotation)
 	newRefreshToken, err := utils.GenerateJWT(
 		h.Config.JWTSecret,
+		"refresh",
 		claims.UserID,
 		tenantIDStr,
 		email,
@@ -375,8 +387,10 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ttl := time.Until(time.Unix(claims.ExpiresAt, 0))
 	if ttl > 0 {
 		if err := utils.BlacklistToken(h.Redis, claims.JTI, ttl); err != nil {
-			// Log error but continue (fail-open for availability)
+			// Fail-closed for refresh security
 			log.Printf("Error blacklisting token: %v", err)
+			utils.WriteError(w, http.StatusServiceUnavailable, "Token validation unavailable")
+			return
 		}
 	}
 

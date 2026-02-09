@@ -18,13 +18,14 @@ var (
 	ErrBlacklistedToken = errors.New("token has been revoked")
 )
 
-// GenerateJWT generates a JWT token with a unique JTI
-func GenerateJWT(secret string, userID, tenantID, email, role string, permissions []string, expiration time.Duration) (string, error) {
+// GenerateJWT generates a JWT token with a unique JTI and token_type
+func GenerateJWT(secret, tokenType, userID, tenantID, email, role string, permissions []string, expiration time.Duration) (string, error) {
 	now := time.Now()
 	jti := uuid.New().String() // Generate unique token ID
 
 	claims := jwt.MapClaims{
 		"jti":         jti,
+		"token_type":  tokenType,
 		"user_id":     userID,
 		"tenant_id":   tenantID,
 		"email":       email,
@@ -108,6 +109,9 @@ func parseJWTClaims(m jwt.MapClaims) (*models.JWTClaims, error) {
 	if jti, ok := m["jti"].(string); ok {
 		claims.JTI = jti
 	}
+	if tokenType, ok := m["token_type"].(string); ok {
+		claims.TokenType = tokenType
+	}
 
 	// Required fields
 	userID, ok := m["user_id"].(string)
@@ -154,4 +158,3 @@ func parseJWTClaims(m jwt.MapClaims) (*models.JWTClaims, error) {
 
 	return claims, nil
 }
-

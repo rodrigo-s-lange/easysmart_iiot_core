@@ -36,6 +36,7 @@ func main() {
 	apiKeyMiddleware := middleware.NewAPIKeyMiddleware(db.Postgres, db.Redis)
 	tenantMiddleware := middleware.NewTenantContextMiddleware(db.Postgres)
 	rateLimitAuth := middleware.NewRateLimitAuth(db.Redis, 10, 60) // 10 attempts per minute
+	corsConfig := middleware.NewCORSConfig(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders)
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db.Postgres, db.Redis, cfg)
@@ -93,7 +94,7 @@ func main() {
 	mux.HandleFunc("GET /api/telemetry/latest", telemetryHandler.GetLatest)
 
 	// Logging middleware
-	handler := loggingMiddleware(mux)
+	handler := loggingMiddleware(corsConfig.Handle(mux))
 
 	// Start server
 	addr := ":" + cfg.Port
