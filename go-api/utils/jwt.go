@@ -1,23 +1,30 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"iiot-go-api/models"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
-	ErrInvalidToken = errors.New("invalid token")
-	ErrExpiredToken = errors.New("expired token")
+	ErrInvalidToken    = errors.New("invalid token")
+	ErrExpiredToken    = errors.New("expired token")
+	ErrBlacklistedToken = errors.New("token has been revoked")
 )
 
-// GenerateJWT generates a JWT token
+// GenerateJWT generates a JWT token with a unique JTI
 func GenerateJWT(secret string, userID, tenantID, email, role string, permissions []string, expiration time.Duration) (string, error) {
 	now := time.Now()
+	jti := uuid.New().String() // Generate unique token ID
+
 	claims := jwt.MapClaims{
+		"jti":         jti,
 		"user_id":     userID,
 		"tenant_id":   tenantID,
 		"email":       email,
@@ -64,9 +71,43 @@ func ValidateJWT(secret, tokenString string) (*models.JWTClaims, error) {
 	return nil, ErrInvalidToken
 }
 
+// IsTokenBlacklisted checks if a token JTI is blacklisted
+func IsTokenBlacklisted(redisClient *redis.Client, jti string) (bool, error) {
+	if jti == "" {
+		return false, nil // No JTI = old token, allow for backward compatibility
+	}
+
+	ctx := context.Background()
+	key := fmt.Sprintf("jwt:blacklist:%s", jti)
+	
+	exists, err := redisClient.Exists(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return exists > 0, nil
+}
+
+// BlacklistToken adds a token JTI to the blacklist with TTL
+func BlacklistToken(redisClient *redis.Client, jti string, ttl time.Duration) error {
+	if jti == "" {
+		return nil // No JTI to blacklist
+	}
+
+	ctx := context.Background()
+	key := fmt.Sprintf("jwt:blacklist:%s", jti)
+	
+	return redisClient.Set(ctx, key, "1", ttl).Err()
+}
+
 // parseJWTClaims converts jwt.MapClaims to models.JWTClaims
 func parseJWTClaims(m jwt.MapClaims) (*models.JWTClaims, error) {
 	claims := &models.JWTClaims{}
+
+	// JTI (optional for backward compatibility, but should be present)
+	if jti, ok := m["jti"].(string); ok {
+		claims.JTI = jti
+	}
 
 	// Required fields
 	userID, ok := m["user_id"].(string)

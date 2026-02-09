@@ -4,26 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"iiot-go-api/config"
 	"iiot-go-api/models"
 	"iiot-go-api/utils"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
 	DB     *pgxpool.Pool
+	Redis  *redis.Client
 	Config *config.Config
 }
 
-func NewAuthHandler(db *pgxpool.Pool, cfg *config.Config) *AuthHandler {
-	return &AuthHandler{DB: db, Config: cfg}
+func NewAuthHandler(db *pgxpool.Pool, redisClient *redis.Client, cfg *config.Config) *AuthHandler {
+	return &AuthHandler{
+		DB:     db,
+		Redis:  redisClient,
+		Config: cfg,
+	}
 }
 
 // Register creates a new user account
@@ -271,7 +279,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
+// Refresh generates new access token from refresh token with revocation
 // Refresh generates new access token from refresh token
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req models.RefreshRequest
@@ -284,6 +292,17 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	claims, err := utils.ValidateJWT(h.Config.JWTSecret, req.RefreshToken)
 	if err != nil {
 		utils.WriteError(w, http.StatusUnauthorized, "Invalid refresh token")
+		return
+	}
+
+	// Check if token is blacklisted (already used)
+	blacklisted, err := utils.IsTokenBlacklisted(h.Redis, claims.JTI)
+	if err != nil {
+		// Log error but continue (fail-open for availability)
+		log.Printf("Error checking token blacklist: %v", err)
+	}
+	if blacklisted {
+		utils.WriteError(w, http.StatusUnauthorized, "Refresh token already used")
 		return
 	}
 
@@ -342,6 +361,15 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
 		return
+	}
+
+	// Blacklist the old refresh token to prevent reuse
+	ttl := time.Until(time.Unix(claims.ExpiresAt, 0))
+	if ttl > 0 {
+		if err := utils.BlacklistToken(h.Redis, claims.JTI, ttl); err != nil {
+			// Log error but continue (fail-open for availability)
+			log.Printf("Error blacklisting token: %v", err)
+		}
 	}
 
 	utils.WriteJSON(w, http.StatusOK, models.RefreshResponse{
