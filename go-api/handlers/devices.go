@@ -2,130 +2,226 @@ package handlers
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"iiot-go-api/config"
 	"iiot-go-api/models"
 	"iiot-go-api/utils"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type DeviceHandler struct {
-	DB    *pgxpool.Pool
-	Redis *redis.Client
+	DB     *pgxpool.Pool
+	Redis  *redis.Client
+	Config *config.Config
 }
 
-func NewDeviceHandler(db *pgxpool.Pool, rdb *redis.Client) *DeviceHandler {
-	return &DeviceHandler{DB: db, Redis: rdb}
+func NewDeviceHandler(db *pgxpool.Pool, rdb *redis.Client, cfg *config.Config) *DeviceHandler {
+	return &DeviceHandler{DB: db, Redis: rdb, Config: cfg}
 }
 
-// ClaimDevice handles device claim requests
+// ClaimDevice handles device claim requests (device_id + claim_code)
 func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 	var req models.ClaimDeviceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-
-	if req.DeviceLabel == "" {
-		utils.WriteError(w, http.StatusBadRequest, "device_label is required")
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	req.ClaimCode = strings.TrimSpace(req.ClaimCode)
+	if req.DeviceID == "" || req.ClaimCode == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id and claim_code are required")
 		return
 	}
 
-	// Get claims from context
 	tenantID := r.Context().Value("tenant_id").(string)
 	userID := r.Context().Value("user_id").(string)
 
-	// Call claim_device function
-	var deviceID, deviceSecret string
-	var success bool
-	var errMsg sql.NullString
-
-	err := h.DB.QueryRow(context.Background(), `
-		SELECT device_id, device_secret, success, error_message
-		FROM claim_device($1, $2, $3)
-	`, req.DeviceLabel, tenantID, userID).Scan(&deviceID, &deviceSecret, &success, &errMsg)
-
+	ctx := context.Background()
+	tx, err := h.DB.Begin(ctx)
 	if err != nil {
-		log.Printf("claim_device query failed: %v", err)
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
 		return
 	}
+	defer tx.Rollback(ctx)
 
-	if !success {
-		utils.WriteError(w, http.StatusBadRequest, errMsg.String)
-		return
-	}
-
-	// Store secret in Redis (5 min TTL)
-	if h.Redis != nil {
-		redisKey := fmt.Sprintf("claim:%s:secret", deviceID)
-		err = h.Redis.Set(context.Background(), redisKey, deviceSecret, 5*time.Minute).Err()
-		if err != nil {
-			log.Printf("Failed to cache secret: %v", err)
-		}
-	}
-
-	utils.WriteJSON(w, http.StatusOK, models.ClaimDeviceResponse{
-		DeviceID: deviceID,
-		Message:  "Device claimed successfully. Device will receive credentials on next bootstrap poll.",
-	})
-}
-
-// Bootstrap handles device bootstrap polling
-func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
-	deviceLabel := r.URL.Query().Get("device_label")
-	if deviceLabel == "" {
-		utils.WriteError(w, http.StatusBadRequest, "device_label is required")
-		return
-	}
-
-	var deviceID, status string
-	var tenantID sql.NullString
-
-	err := h.DB.QueryRow(context.Background(), `
-		SELECT device_id, status, tenant_id
+	var status string
+	var claimCodeHash sql.NullString
+	err = tx.QueryRow(ctx, `
+		SELECT status, claim_code_hash
 		FROM devices_v2
-		WHERE device_label = $1
-	`, deviceLabel).Scan(&deviceID, &status, &tenantID)
-
+		WHERE device_id = $1::uuid
+		FOR UPDATE
+	`, req.DeviceID).Scan(&status, &claimCodeHash)
 	if err != nil {
 		utils.WriteError(w, http.StatusNotFound, "Device not found")
 		return
 	}
 
-	// Check if secret is available in Redis
-	if status == "claimed" && h.Redis != nil {
-		redisKey := fmt.Sprintf("claim:%s:secret", deviceID)
-		exists, _ := h.Redis.Exists(context.Background(), redisKey).Result()
+	if status != "unclaimed" {
+		utils.WriteError(w, http.StatusConflict, "Device already claimed")
+		return
+	}
 
-		if exists > 0 {
-			utils.WriteJSON(w, http.StatusOK, models.BootstrapResponse{
-				Status:    status,
-				DeviceID:  deviceID,
-				SecretURL: fmt.Sprintf("/api/devices/%s/secret", deviceID),
-			})
-			return
+	if !claimCodeHash.Valid {
+		utils.WriteError(w, http.StatusConflict, "Device is missing claim code")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(claimCodeHash.String), []byte(req.ClaimCode)); err != nil {
+		utils.WriteError(w, http.StatusUnauthorized, "Invalid claim code")
+		return
+	}
+
+	// Generate device secret and hash
+	deviceSecret, err := generateDeviceSecret()
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	secretHash, err := bcrypt.GenerateFromPassword([]byte(deviceSecret), 12)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	// Claim device
+	_, err = tx.Exec(ctx, `
+		UPDATE devices_v2
+		SET tenant_id = $1::uuid,
+			owner_user_id = $2::uuid,
+			status = 'claimed',
+			claimed_at = NOW(),
+			secret_hash = $3,
+			activated_at = NULL,
+			secret_delivered_at = NULL
+		WHERE device_id = $4::uuid
+	`, tenantID, userID, string(secretHash), req.DeviceID)
+	if err != nil {
+		log.Printf("claim_device update failed: %v", err)
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	// Cache secret for one-time retrieval
+	if h.Redis != nil {
+		redisKey := fmt.Sprintf("claim:%s:secret", req.DeviceID)
+		if err := h.Redis.Set(context.Background(), redisKey, deviceSecret, 5*time.Minute).Err(); err != nil {
+			log.Printf("Failed to cache secret: %v", err)
 		}
 	}
 
-	// Default response
-	utils.WriteJSON(w, http.StatusOK, models.BootstrapResponse{
-		Status:       status,
-		PollInterval: 30,
+	utils.WriteJSON(w, http.StatusOK, models.ClaimDeviceResponse{
+		DeviceID: req.DeviceID,
+		Message:  "Device claimed successfully. Device can now retrieve secret.",
 	})
 }
 
-// GetSecret handles secret retrieval (one-time use)
+// Bootstrap handles device bootstrap polling (HMAC + timestamp)
+func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
+	var req models.BootstrapRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	req.Signature = strings.TrimSpace(req.Signature)
+	req.Timestamp = strings.TrimSpace(req.Timestamp)
+	if req.DeviceID == "" || req.Signature == "" || req.Timestamp == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id, signature and timestamp are required")
+		return
+	}
+
+	if !h.verifyHMAC(req.DeviceID, req.Timestamp, req.Signature) {
+		utils.WriteError(w, http.StatusUnauthorized, "Invalid signature")
+		return
+	}
+
+	if !h.verifyTimestamp(req.Timestamp) {
+		utils.WriteError(w, http.StatusUnauthorized, "Invalid timestamp")
+		return
+	}
+
+	var status string
+	err := h.DB.QueryRow(context.Background(), `
+		SELECT status
+		FROM devices_v2
+		WHERE device_id = $1::uuid
+	`, req.DeviceID).Scan(&status)
+	if err != nil {
+		utils.WriteError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+
+	// Update last seen
+	h.DB.Exec(context.Background(), `
+		UPDATE devices_v2
+		SET last_seen_at = NOW()
+		WHERE device_id = $1::uuid
+	`, req.DeviceID)
+
+	utils.WriteJSON(w, http.StatusOK, models.BootstrapResponse{
+		Status:       status,
+		DeviceID:     req.DeviceID,
+		PollInterval: 60,
+	})
+}
+
+// GetSecret handles secret retrieval (one-time use) via HMAC + timestamp
 func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
-	deviceID := r.URL.Query().Get("device_id")
-	if deviceID == "" {
-		utils.WriteError(w, http.StatusBadRequest, "device_id is required")
+	var req models.SecretRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	req.Signature = strings.TrimSpace(req.Signature)
+	req.Timestamp = strings.TrimSpace(req.Timestamp)
+	if req.DeviceID == "" || req.Signature == "" || req.Timestamp == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id, signature and timestamp are required")
+		return
+	}
+
+	if !h.verifyHMAC(req.DeviceID, req.Timestamp, req.Signature) {
+		utils.WriteError(w, http.StatusUnauthorized, "Invalid signature")
+		return
+	}
+
+	if !h.verifyTimestamp(req.Timestamp) {
+		utils.WriteError(w, http.StatusUnauthorized, "Invalid timestamp")
+		return
+	}
+
+	// Ensure device is claimed
+	var status string
+	err := h.DB.QueryRow(context.Background(), `
+		SELECT status
+		FROM devices_v2
+		WHERE device_id = $1::uuid
+	`, req.DeviceID).Scan(&status)
+	if err != nil {
+		utils.WriteError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+	if status != "claimed" {
+		utils.WriteError(w, http.StatusConflict, "Device is not ready for secret retrieval")
 		return
 	}
 
@@ -134,17 +230,107 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redisKey := fmt.Sprintf("claim:%s:secret", deviceID)
+	redisKey := fmt.Sprintf("claim:%s:secret", req.DeviceID)
 
 	// Get and delete atomically
 	secret, err := h.Redis.GetDel(context.Background(), redisKey).Result()
-	if err != nil {
-		utils.WriteError(w, http.StatusNotFound, "Secret not found or already retrieved")
+	if err != nil || secret == "" {
+		// Re-issue new secret if cache is missing
+		secret, err = generateDeviceSecret()
+		if err != nil {
+			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+			return
+		}
+		secretHash, err := bcrypt.GenerateFromPassword([]byte(secret), 12)
+		if err != nil {
+			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+			return
+		}
+		_, err = h.DB.Exec(context.Background(), `
+			UPDATE devices_v2
+			SET secret_hash = $1, secret_delivered_at = NOW()
+			WHERE device_id = $2::uuid
+		`, string(secretHash), req.DeviceID)
+		if err != nil {
+			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+			return
+		}
+	} else {
+		h.DB.Exec(context.Background(), `
+			UPDATE devices_v2
+			SET secret_delivered_at = NOW()
+			WHERE device_id = $1::uuid
+		`, req.DeviceID)
+	}
+
+	expiresAt := time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339)
+	utils.WriteJSON(w, http.StatusOK, models.SecretResponse{
+		DeviceSecret: secret,
+		ExpiresAt:    expiresAt,
+	})
+}
+
+// ResetDevice resets a claimed/active device back to unclaimed
+func (h *DeviceHandler) ResetDevice(w http.ResponseWriter, r *http.Request) {
+	var req models.ResetDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	if req.DeviceID == "" || req.Confirmation != "RESET" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id and confirmation are required")
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, models.SecretResponse{
-		DeviceSecret: secret,
+	userID := r.Context().Value("user_id").(string)
+	tenantID := r.Context().Value("tenant_id").(string)
+	role := r.Context().Value("role").(string)
+
+	var tag any
+	var err error
+	if role == "super_admin" || role == "tenant_admin" {
+		tag, err = h.DB.Exec(context.Background(), `
+			UPDATE devices_v2
+			SET tenant_id = NULL,
+				owner_user_id = NULL,
+				status = 'unclaimed',
+				claimed_at = NULL,
+				activated_at = NULL,
+				secret_hash = NULL,
+				secret_delivered_at = NULL
+			WHERE device_id = $1::uuid AND tenant_id = $2::uuid
+		`, req.DeviceID, tenantID)
+	} else {
+		tag, err = h.DB.Exec(context.Background(), `
+			UPDATE devices_v2
+			SET tenant_id = NULL,
+				owner_user_id = NULL,
+				status = 'unclaimed',
+				claimed_at = NULL,
+				activated_at = NULL,
+				secret_hash = NULL,
+				secret_delivered_at = NULL
+			WHERE device_id = $1::uuid AND tenant_id = $2::uuid AND owner_user_id = $3::uuid
+		`, req.DeviceID, tenantID, userID)
+	}
+
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	affected := int64(0)
+	if ct, ok := tag.(interface{ RowsAffected() int64 }); ok {
+		affected = ct.RowsAffected()
+	}
+	if affected == 0 {
+		utils.WriteError(w, http.StatusNotFound, "Device not found or not authorized")
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"message": "Device reset to unclaimed",
 	})
 }
 
@@ -172,4 +358,40 @@ func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusOK, devices)
+}
+
+func (h *DeviceHandler) verifyHMAC(deviceID, timestamp, signature string) bool {
+	msg := deviceID + ":" + timestamp
+	mac := hmac.New(sha256.New, []byte(h.Config.ManufacturingMasterKey))
+	_, _ = mac.Write([]byte(msg))
+	expected := mac.Sum(nil)
+
+	decodedSig, err := hex.DecodeString(signature)
+	if err != nil {
+		return false
+	}
+	return hmac.Equal(decodedSig, expected)
+}
+
+func (h *DeviceHandler) verifyTimestamp(ts string) bool {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return false
+	}
+	now := time.Now().UTC()
+	if t.After(now.Add(time.Duration(h.Config.BootstrapMaxSkewSecs) * time.Second)) {
+		return false
+	}
+	if now.Sub(t) > time.Duration(h.Config.BootstrapMaxSkewSecs)*time.Second {
+		return false
+	}
+	return true
+}
+
+func generateDeviceSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }

@@ -46,6 +46,10 @@ type Config struct {
 	CORSAllowedOrigins string
 	CORSAllowedMethods string
 	CORSAllowedHeaders string
+
+	// Manufacturing / provisioning
+	ManufacturingMasterKey string
+	BootstrapMaxSkewSecs   int64
 }
 
 func Load() *Config {
@@ -82,6 +86,9 @@ func Load() *Config {
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", ""),
 		CORSAllowedMethods: getEnv("CORS_ALLOWED_METHODS", "GET,POST,PUT,DELETE,OPTIONS"),
 		CORSAllowedHeaders: getEnv("CORS_ALLOWED_HEADERS", "Authorization,Content-Type"),
+
+		ManufacturingMasterKey: getEnv("MANUFACTURING_MASTER_KEY", "change-this-manufacturing-key"),
+		BootstrapMaxSkewSecs:   getEnvInt64("BOOTSTRAP_MAX_SKEW_SECS", 300),
 	}
 }
 

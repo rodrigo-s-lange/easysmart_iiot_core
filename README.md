@@ -11,8 +11,9 @@ Plataforma Industrial IoT focada em ingestão MQTT, persistência de telemetria 
 ## Arquitetura (visão rápida)
 
 **Fluxo realtime (front)**
-1. Device publica em `devices/<token>/telemetry/slot/<n>`.
+1. Device publica em `tenants/<tenant_id>/devices/<device_id>/telemetry/slot/<n>`.
 2. EMQX distribui para subscribers (frontend via WSS).
+3. Autenticação MQTT é por `device_label` + `device_secret` (ver seção MQTT).
 
 **Fluxo de persistência**
 1. EMQX Rule Engine envia webhook HTTP.
@@ -73,8 +74,8 @@ docker-compose logs -f
 **Local (TCP)**
 ```bash
 mosquitto_pub -h 192.168.0.99 -p 1883 \
-  -u "TOKEN" -P "TOKEN" \
-  -t "devices/TOKEN/telemetry/slot/0" \
+  -u "DEVICE_LABEL" -P "DEVICE_SECRET" \
+  -t "tenants/TENANT_ID/devices/DEVICE_ID/telemetry/slot/0" \
   -m '{"value":25.5}'
 ```
 
@@ -84,7 +85,16 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 - Path: `/mqtt`
 - Protocol: `mqtt`
 - SSL: sim
-- Username/Password: `device token`
+- Username: `device_label`
+- Password: `device_secret`
+- Topic: `tenants/<tenant_id>/devices/<device_id>/telemetry/slot/<n>`
+
+**Subscribe (monitoramento)**
+```bash
+mosquitto_sub -h 192.168.0.99 -p 1883 \
+  -u "DEVICE_LABEL" -P "DEVICE_SECRET" \
+  -t "tenants/TENANT_ID/devices/DEVICE_ID/telemetry/#" -v
+```
 
 ## Go API
 
@@ -97,14 +107,20 @@ curl http://localhost:3001/health
 `POST /api/telemetry`
 
 **Cache do último valor**
-`GET /api/telemetry/latest?token=TOKEN&slot=0`
+`GET /api/telemetry/latest?token=DEVICE_ID&slot=0`
 - Se não houver cache: retorna `200` com `{}`.
+**Nota:** o parâmetro `token` atualmente é o `device_id` (legado; renomear depois).
 
 ## EMQX (auth + rule engine)
 
 ### Auth/ACL (emqx.conf)
-- Autenticação via PostgreSQL.
-- ACL por device: `devices/<token>/#`.
+- Autenticação via PostgreSQL (views `emqx_auth_v2` e `emqx_acl_v2`).
+- Username: `device_label`.
+- ACL por device/tenant:
+  - Publish: `tenants/<tenant_id>/devices/<device_id>/telemetry/#`
+  - Publish: `tenants/<tenant_id>/devices/<device_id>/events/#`
+  - Subscribe: `tenants/<tenant_id>/devices/<device_id>/commands/#`
+  - Publish: `tenants/<tenant_id>/devices/<device_id>/status`
 - `no_match = deny`.
 
 Arquivo: `emqx/etc/emqx.conf`
@@ -123,7 +139,7 @@ Arquivo: `emqx/etc/emqx.conf`
    - SQL:
      ```sql
      SELECT payload, clientid, topic, timestamp
-     FROM "devices/+/telemetry/slot/+"
+     FROM "tenants/+/devices/+/telemetry/slot/+"
      ```
 
 3. Action → HTTP Server
@@ -163,29 +179,62 @@ Logs de bloqueio (Go API):
 - Mantém o último valor de cada device/slot no Redis.
 - Serve para telas que precisam mostrar estado atual sem esperar publish.
 
-## Provisionamento (planejado)
+## Provisionamento (implementado - Opção A)
 
-**Objetivo:** devices saem de fábrica apenas com `device_id`. Eles sobem na rede como **unclaimed** e só passam a publicar após o usuário reclamar o device na plataforma.
+**Objetivo:** devices saem de fábrica com `device_id` público e prova de autenticidade via HMAC. Eles sobem na rede como **unclaimed** e só passam a publicar após o usuário **reclamar** o device com um **claim_code** físico.
 
-**Fluxo proposto (device_id apenas):**
-1. Device sobe e chama `GET /api/devices/bootstrap?device_id=...`.
-2. Se `status = inactive` → resposta “unclaimed” (sem secret).
-3. Usuário logado na plataforma insere `device_id` e reclama.
-4. Backend gera `device_secret` forte (32+ bytes), grava apenas `secret_hash` (bcrypt) e marca `status = active`.
-5. Device faz polling no bootstrap, recebe o `device_secret` (via TLS) e passa a autenticar:
-   - MQTT `username = device_id`
-   - MQTT `password = device_secret`
+**Fluxo implementado (HMAC + claim_code):**
+1. **Bootstrap (device)**  
+   `POST /api/devices/bootstrap`  
+   Body:
+   ```json
+   {
+     "device_id": "UUID",
+     "timestamp": "2026-02-09T06:03:22Z",
+     "signature": "HMAC_SHA256(MANUFACTURING_MASTER_KEY, device_id:timestamp)"
+   }
+   ```
+   Retorna `status` e `poll_interval`.
+
+2. **Claim (usuário logado)**  
+   `POST /api/devices/claim`  
+   Body:
+   ```json
+   {
+     "device_id": "UUID",
+     "claim_code": "CODE-IMPRESSO"
+   }
+   ```
+   Backend valida `claim_code_hash`, gera `device_secret` e grava apenas `secret_hash` (bcrypt). Status → `claimed`.
+
+3. **Entrega do secret (device)**  
+   `POST /api/devices/secret` com HMAC + timestamp.  
+   Retorna `device_secret` (uma vez). Status permanece `claimed`.
+
+4. **Primeira conexão MQTT**  
+   Ao publicar telemetry, o backend marca status `active`.  
+   - MQTT `username = device_label`  
+   - MQTT `password = device_secret`  
+   - Topic usa `tenant_id` + `device_id`
 
 **Segurança:**
+- `MANUFACTURING_MASTER_KEY` fica **apenas** no `.env` (não vai para o banco).
+- `claim_code` **nunca** é salvo em texto; só `claim_code_hash`.
 - `device_secret` nunca é salvo em texto no banco.
-- `device_secret` não existe antes do claim.
-- Se banco vazar, o atacante não consegue autenticar (hash forte + segredo longo).
+- Assinaturas têm janela de tempo (default 5 min).
 
-**Reset do device:**
-- Reset apaga o secret local e volta ao estado unclaimed.
-- O device só volta a publicar após novo claim pelo usuário.
+**Observação importante (IDs):**
+- `device_id` é o identificador do device usado nos tópicos MQTT.
+- `device_label` é o **username** MQTT (credencial pública/token).
+- O device precisa ter **ambos** gravados (ex.: durante fabricação).
 
-**Atenção:** Esse fluxo ainda não foi implementado no Go API/EMQX. Fica registrado aqui como plano oficial.
+**Reset do device (usuário autorizado):**
+`POST /api/devices/reset` com `confirmation: "RESET"`  
+Reseta para `unclaimed` e limpa secrets/tenant/owner.
+
+**Migração para devices existentes:**
+- `claim_code_hash` é preenchido com `device_label` (temporário).  
+  Troque por claim_code real em produção.
 
 ## Operações comuns
 
@@ -221,7 +270,7 @@ sudo journalctl -u cloudflared -f
 ```bash
 curl -X POST http://localhost:3001/api/telemetry \
   -H "Content-Type: application/json" \
-  -d '{"clientid":"test","topic":"devices/TOKEN/telemetry/slot/99","payload":{"value":1},"timestamp":"'$(date +%s)000'"}'
+  -d '{"clientid":"test","topic":"tenants/TENANT_ID/devices/DEVICE_ID/telemetry/slot/99","payload":{"value":1},"timestamp":"'$(date +%s)000'"}'
 
 docker exec -it iiot_timescaledb psql -U admin -d iiot_telemetry -c \
   "SELECT * FROM telemetry WHERE slot=99 ORDER BY timestamp DESC LIMIT 5;"

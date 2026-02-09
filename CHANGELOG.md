@@ -11,12 +11,15 @@ All notable changes to this project will be documented in this file.
 - TimescaleDB retention policy (365 days).
 - Rate limit no Go API via Redis (device + slot).
 - Cache do último valor por slot via Redis e endpoint de leitura.
-- Planned device provisioning flow documented in README (unclaimed → claim → secret).
+- Device provisioning flow implemented (HMAC bootstrap/secret + claim code + reset).
+- Provisioning endpoints: `POST /api/devices/bootstrap`, `POST /api/devices/secret`, `POST /api/devices/reset`.
+- Provisioning migration `003_device_provisioning_claim_code.sql` (adds `claim_code_hash`, `secret_delivered_at`).
+- Env vars for provisioning: `MANUFACTURING_MASTER_KEY`, `BOOTSTRAP_MAX_SKEW_SECS`.
 - `.env.example` added with required JWT secret note.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
-- README atualizado com stack e comandos do TimescaleDB.
+- README/STATUS atualizados (topics tenant-aware, device_label vs device_id, provisioning Option A).
 - Go API now refuses to start if `JWT_SECRET` is default/empty.
 - Refresh token now uses current role/tenant/email from DB when issuing new tokens.
 

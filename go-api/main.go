@@ -21,6 +21,9 @@ func main() {
 	if cfg.JWTSecret == "" || cfg.JWTSecret == "change-this-in-production-please" {
 		log.Fatal("JWT_SECRET must be set to a strong value (refusing to start with default/empty)")
 	}
+	if cfg.ManufacturingMasterKey == "" || cfg.ManufacturingMasterKey == "change-this-manufacturing-key" {
+		log.Fatal("MANUFACTURING_MASTER_KEY must be set to a strong value (refusing to start with default/empty)")
+	}
 
 	// Connect to databases
 	db, err := database.Connect(ctx, cfg.PostgresURL(), cfg.TimescaleURL(), cfg.RedisAddr(), cfg.RedisPassword)
@@ -40,7 +43,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db.Postgres, db.Redis, cfg)
-	deviceHandler := handlers.NewDeviceHandler(db.Postgres, db.Redis)
+	deviceHandler := handlers.NewDeviceHandler(db.Postgres, db.Redis, cfg)
 	telemetryHandler := handlers.NewTelemetryHandler(db.Postgres, db.Timescale, db.Redis, cfg)
 
 	// Setup routes
@@ -59,9 +62,9 @@ func main() {
 	mux.Handle("POST /api/auth/login", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Login)))
 	mux.Handle("POST /api/auth/refresh", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Refresh)))
 
-	// Device bootstrap (no auth required - devices poll this)
-	mux.HandleFunc("GET /api/devices/bootstrap", deviceHandler.Bootstrap)
-	mux.HandleFunc("GET /api/devices/secret", deviceHandler.GetSecret)
+	// Device bootstrap + secret (no auth required - devices poll this)
+	mux.Handle("POST /api/devices/bootstrap", http.HandlerFunc(deviceHandler.Bootstrap))
+	mux.Handle("POST /api/devices/secret", http.HandlerFunc(deviceHandler.GetSecret))
 
 	// Device claim (requires JWT + permission)
 	mux.Handle("POST /api/devices/claim",
@@ -79,6 +82,15 @@ func main() {
 				middleware.RequirePermission("devices:read")(
 					http.HandlerFunc(deviceHandler.ListDevices),
 				),
+			),
+		),
+	)
+
+	// Device reset (requires JWT + permission)
+	mux.Handle("POST /api/devices/reset",
+		jwtMiddleware.Authenticate(
+			middleware.RequirePermission("devices:write")(
+				http.HandlerFunc(deviceHandler.ResetDevice),
 			),
 		),
 	)
@@ -111,10 +123,11 @@ func main() {
 	log.Printf("  POST   /api/auth/register (rate limited)")
 	log.Printf("  POST   /api/auth/login (rate limited)")
 	log.Printf("  POST   /api/auth/refresh (rate limited)")
-	log.Printf("  GET    /api/devices/bootstrap")
-	log.Printf("  GET    /api/devices/secret")
+	log.Printf("  POST   /api/devices/bootstrap")
+	log.Printf("  POST   /api/devices/secret")
 	log.Printf("  POST   /api/devices/claim")
 	log.Printf("  GET    /api/devices")
+	log.Printf("  POST   /api/devices/reset")
 	log.Printf("  POST   /api/telemetry")
 	log.Printf("  GET    /api/telemetry/latest")
 	log.Printf("  GET    /health")

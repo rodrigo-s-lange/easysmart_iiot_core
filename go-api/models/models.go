@@ -90,7 +90,8 @@ type RefreshResponse struct {
 
 // ClaimDeviceRequest represents a device claim request
 type ClaimDeviceRequest struct {
-	DeviceLabel string `json:"device_label"`
+	DeviceID  string `json:"device_id"`
+	ClaimCode string `json:"claim_code"`
 }
 
 // ClaimDeviceResponse represents a device claim response
@@ -103,13 +104,33 @@ type ClaimDeviceResponse struct {
 type BootstrapResponse struct {
 	Status       string `json:"status"`
 	DeviceID     string `json:"device_id,omitempty"`
-	SecretURL    string `json:"secret_url,omitempty"`
 	PollInterval int    `json:"poll_interval,omitempty"`
+}
+
+// BootstrapRequest represents device bootstrap polling
+type BootstrapRequest struct {
+	DeviceID  string `json:"device_id"`
+	Timestamp string `json:"timestamp"`
+	Signature string `json:"signature"`
+}
+
+// SecretRequest represents device secret retrieval
+type SecretRequest struct {
+	DeviceID  string `json:"device_id"`
+	Timestamp string `json:"timestamp"`
+	Signature string `json:"signature"`
 }
 
 // SecretResponse represents a secret retrieval response
 type SecretResponse struct {
 	DeviceSecret string `json:"device_secret"`
+	ExpiresAt    string `json:"expires_at"`
+}
+
+// ResetDeviceRequest represents device reset request
+type ResetDeviceRequest struct {
+	DeviceID      string `json:"device_id"`
+	Confirmation  string `json:"confirmation"`
 }
 
 // ErrorResponse represents an error response

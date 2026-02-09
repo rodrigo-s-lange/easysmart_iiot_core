@@ -1,22 +1,25 @@
 # IIoT Platform - Production Multi-Tenant Architecture
 
-## ✅ Status: Sistema Base Funcional - Iniciando Melhorias Profissionais
+## ✅ Status: Sistema Base Funcional (Auth + Provisionamento + Telemetria)
 
-**Última Atualização:** 2026-02-09 03:42 BRT  
-**Progresso MVP:** 80% → 85% (base funcional, faltam refinamentos)
+**Última Atualização:** 2026-02-09  
+**Progresso MVP:** base funcional pronta; faltam refinamentos operacionais
 
 ---
 
 ## 🎯 Missão Atual: Backend Profissional
 
-### Fase A - Gaps Críticos (EM ANDAMENTO)
+### Fase A - Gaps Críticos (STATUS)
 Corrigindo falhas que impedem produção profissional:
-- [ ] Register endpoint
-- [ ] Refresh token endpoint  
+- [x] Register endpoint
+- [x] Login endpoint
+- [x] Refresh token endpoint (token_type + JTI blacklist)
+- [x] JWT secret enforcement (fail startup if default/empty)
+- [x] Rate limit auth (Redis, 10/min por IP)
+- [x] CORS middleware (configurável por env)
 - [ ] Input validation
 - [ ] Error handling estruturado
 - [ ] Graceful shutdown
-- [ ] CORS middleware
 
 **Tempo estimado:** 6 horas  
 **Prioridade:** P0 (Crítico)
@@ -194,39 +197,34 @@ FOR ALL USING (
    - Redis cache (1h TTL, 99% hit rate)
    - Scope-based permissions
 
-### Device Provisioning Flow
+### Device Provisioning Flow (Implementado - Opção A)
 
 ```
 Factory Phase:
-1. INSERT device (status=unclaimed, device_label="ESM-X1Y2Z3", secret_hash=NULL)
-2. Flash firmware with device_label only
+1. Device has: device_id (público), device_label (MQTT username), claim_code (privado)
+2. DB: devices_v2.status = unclaimed, claim_code_hash = bcrypt(claim_code)
 
-Device First Boot:
-3. Device → API: GET /api/devices/bootstrap?device_label=ESM-X1Y2Z3
-4. API → Device: 202 {status: "unclaimed", poll_interval: 30}
-5. Device polls every 30s (LED blinks)
+Bootstrap (Device):
+3. POST /api/devices/bootstrap
+   body: {device_id, timestamp, signature=HMAC(MASTER_KEY, device_id:timestamp)}
+4. API valida HMAC + janela de tempo, retorna status + poll_interval
 
-User Claims Device:
-6. User → API: POST /api/devices/claim {device_label: "ESM-X1Y2Z3"} [JWT auth]
-7. API → DB: claim_device() generates 64-char hex secret, stores bcrypt hash
-8. API → Redis: SET claim:{device_id}:secret (5min TTL)
-9. API → User: 200 {device_id, message: "Claimed"}
+Claim (Usuário logado):
+5. POST /api/devices/claim {device_id, claim_code}
+6. API valida claim_code_hash, grava tenant_id/owner_user_id
+7. API gera device_secret e grava apenas secret_hash (bcrypt)
+8. API cacheia secret 5min no Redis (one-time)
 
-Device Retrieves Secret:
-10. Device → API: GET /api/devices/bootstrap (next poll)
-11. API → Device: 200 {status: "claimed", secret_url: "/api/devices/secret?token=..."}
-12. Device → API: GET /api/devices/secret?token=...
-13. API → Redis: GETDEL claim:{device_id}:secret (consume once)
-14. API → Device: 200 {device_secret: "a1b2c3..."}
-15. Device stores secret in flash (encrypted at rest)
+Secret Delivery (Device):
+9. POST /api/devices/secret
+   body: {device_id, timestamp, signature=HMAC(MASTER_KEY, device_id:timestamp)}
+10. API valida HMAC + status=claimed
+11. API retorna device_secret (uma vez) e grava secret_delivered_at
 
 MQTT Activation:
-16. Device → EMQX: CONNECT (username=device_label, password=device_secret)
-17. EMQX → DB: SELECT FROM emqx_auth_v2 WHERE username=...
-18. EMQX: bcrypt verify → CONNACK success
-19. Device → EMQX: PUBLISH tenants/{tenant_id}/devices/{device_id}/telemetry/slot/0
-20. EMQX Rule Engine → Go API webhook → TimescaleDB
-21. API updates device status='active', activated_at=NOW()
+12. Device → EMQX: CONNECT (username=device_label, password=device_secret)
+13. Device → EMQX: PUBLISH tenants/{tenant_id}/devices/{device_id}/telemetry/slot/0
+14. Go API marca status=active no primeiro telemetry
 ```
 
 ---
@@ -238,9 +236,9 @@ MQTT Activation:
 1. **MQTT Local**
    ```bash
    mosquitto_pub -h 192.168.0.99 -p 1883 \
-     -u "8f8835f1-70c3-4cbd-b4c0-9acb6826c641" \
-     -P "8f8835f1-70c3-4cbd-b4c0-9acb6826c641" \
-     -t "tenants/.../devices/.../telemetry/slot/0" \
+     -u "DEVICE_LABEL" \
+     -P "DEVICE_SECRET" \
+     -t "tenants/<tenant_id>/devices/<device_id>/telemetry/slot/0" \
      -m '{"value":42}'
    ```
    **Status:** ✅ Funciona
@@ -568,4 +566,3 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 ---
 
 **Sistema estável. Pronto para Fase A - Backend Profissional.** 🚀
-
