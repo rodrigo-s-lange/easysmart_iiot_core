@@ -110,6 +110,10 @@ mosquitto_sub -h 192.168.0.99 -p 1883 \
 
 ## Go API
 
+**OpenAPI (documentação REST)**
+- Arquivo: `docs/openapi.yaml`
+- Base URL: `http://localhost:3001`
+
 **Health**
 ```bash
 curl http://localhost:3001/health
