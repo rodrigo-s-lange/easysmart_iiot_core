@@ -559,7 +559,7 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 ## 📚 Arquivos Importantes
 
 ```
-/home/rodrigo/iiot_platform/
+/home/rodrigo/easysmart_iiot_core/
 ├── database/migrations/
 │   ├── 001_initial_schema.sql
 │   └── 002_production_multi_tenant.sql

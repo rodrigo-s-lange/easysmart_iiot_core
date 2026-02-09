@@ -1,7 +1,7 @@
 #!/bin/bash
 # Restaurar configuração do EMQX do backup mais recente
 
-BACKUP_DIR="/home/rodrigo/iiot_platform/backups"
+BACKUP_DIR="/home/rodrigo/easysmart_iiot_core/backups"
 LATEST_BACKUP=$(ls -t $BACKUP_DIR/emqx_config_*.tar.gz 2>/dev/null | head -1)
 
 if [ -z "$LATEST_BACKUP" ]; then

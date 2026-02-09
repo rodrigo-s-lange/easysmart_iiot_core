@@ -1,7 +1,7 @@
 #!/bin/bash
 # Backup automático das configurações do EMQX
 
-BACKUP_DIR="/home/rodrigo/iiot_platform/backups"
+BACKUP_DIR="/home/rodrigo/easysmart_iiot_core/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Exportar configuração do EMQX
