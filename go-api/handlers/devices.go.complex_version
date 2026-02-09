@@ -1,0 +1,207 @@
+package handlers
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"iiot-go-api/models"
+	"iiot-go-api/utils"
+        "github.com/jackc/pgx/v5"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+)
+
+type DeviceHandler struct {
+	DB    *pgxpool.Pool
+	Redis *redis.Client
+}
+
+func NewDeviceHandler(db *pgxpool.Pool, rdb *redis.Client) *DeviceHandler {
+	return &DeviceHandler{DB: db, Redis: rdb}
+}
+
+// ClaimDevice handles device claim requests
+func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
+	var req models.ClaimDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.DeviceLabel == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_label is required")
+		return
+	}
+
+	// Get claims from context
+	tenantID := r.Context().Value("tenant_id").(string)
+	userID := r.Context().Value("user_id").(string)
+
+	// Call claim_device function
+	var deviceID, deviceSecret string
+	var success bool
+	var errMsg sql.NullString
+
+	err := h.DB.QueryRow(context.Background(), `
+		SELECT device_id, device_secret, success, error_message
+		FROM claim_device($1, $2, $3)
+	`, req.DeviceLabel, tenantID, userID).Scan(&deviceID, &deviceSecret, &success, &errMsg)
+
+	if err != nil {
+		log.Printf("claim_device query failed: %v", err)
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	if !success {
+		utils.WriteError(w, http.StatusBadRequest, errMsg.String)
+		return
+	}
+
+	// Store secret in Redis (5 min TTL)
+	if h.Redis != nil {
+		redisKey := fmt.Sprintf("claim:%s:secret", deviceID)
+		err = h.Redis.Set(context.Background(), redisKey, deviceSecret, 5*time.Minute).Err()
+		if err != nil {
+			log.Printf("Failed to cache secret: %v", err)
+		}
+	}
+
+	utils.WriteJSON(w, http.StatusOK, models.ClaimDeviceResponse{
+		DeviceID: deviceID,
+		Message:  "Device claimed successfully. Device will receive credentials on next bootstrap poll.",
+	})
+}
+
+// Bootstrap handles device bootstrap polling
+func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
+	deviceLabel := r.URL.Query().Get("device_label")
+	if deviceLabel == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_label is required")
+		return
+	}
+
+	var deviceID, status string
+	var tenantID sql.NullString
+
+	err := h.DB.QueryRow(context.Background(), `
+		SELECT device_id, status, tenant_id
+		FROM devices_v2
+		WHERE device_label = $1
+	`, deviceLabel).Scan(&deviceID, &status, &tenantID)
+
+	if err != nil {
+		utils.WriteError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+
+	// Check if secret is available in Redis
+	if status == "claimed" && h.Redis != nil {
+		redisKey := fmt.Sprintf("claim:%s:secret", deviceID)
+		exists, _ := h.Redis.Exists(context.Background(), redisKey).Result()
+
+		if exists > 0 {
+			utils.WriteJSON(w, http.StatusOK, models.BootstrapResponse{
+				Status:    status,
+				DeviceID:  deviceID,
+				SecretURL: fmt.Sprintf("/api/devices/%s/secret", deviceID),
+			})
+			return
+		}
+	}
+
+	// Default response
+	utils.WriteJSON(w, http.StatusOK, models.BootstrapResponse{
+		Status:       status,
+		PollInterval: 30,
+	})
+}
+
+// GetSecret handles secret retrieval (one-time use)
+func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
+	deviceID := r.URL.Query().Get("device_id")
+	if deviceID == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id is required")
+		return
+	}
+
+	if h.Redis == nil {
+		utils.WriteError(w, http.StatusServiceUnavailable, "Cache unavailable")
+		return
+	}
+
+	redisKey := fmt.Sprintf("claim:%s:secret", deviceID)
+
+	// Get and delete atomically
+	secret, err := h.Redis.GetDel(context.Background(), redisKey).Result()
+	if err != nil {
+		utils.WriteError(w, http.StatusNotFound, "Secret not found or already retrieved")
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, models.SecretResponse{
+		DeviceSecret: secret,
+	})
+}
+
+// ListDevices handles device listing
+func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
+	// Use transaction from context (RLS enabled)
+	tx, ok := r.Context().Value("db_tx").(Tx)
+	if !ok {
+		// Fallback to direct query (no RLS)
+		tenantID := r.Context().Value("tenant_id").(string)
+		rows, err := h.DB.Query(context.Background(), `
+			SELECT device_id, device_label, status, firmware_version, last_seen_at, created_at
+			FROM devices_v2
+			WHERE tenant_id = $1
+			ORDER BY created_at DESC
+		`, tenantID)
+		if err != nil {
+			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+			return
+		}
+		defer rows.Close()
+
+		devices := []models.Device{}
+		for rows.Next() {
+			var d models.Device
+			rows.Scan(&d.DeviceID, &d.DeviceLabel, &d.Status, &d.FirmwareVersion, &d.LastSeenAt, &d.CreatedAt)
+			devices = append(devices, d)
+		}
+
+		utils.WriteJSON(w, http.StatusOK, devices)
+		return
+	}
+
+	// Use transaction (RLS active)
+	rows, err := tx.Query(context.Background(), `
+		SELECT device_id, device_label, status, firmware_version, last_seen_at, created_at
+		FROM devices_v2
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	defer rows.Close()
+
+	devices := []models.Device{}
+	for rows.Next() {
+		var d models.Device
+		rows.Scan(&d.DeviceID, &d.DeviceLabel, &d.Status, &d.FirmwareVersion, &d.LastSeenAt, &d.CreatedAt)
+		devices = append(devices, d)
+	}
+
+	utils.WriteJSON(w, http.StatusOK, devices)
+}
+
+// Tx interface for pgx transaction
+type Tx interface { Commit(ctx context.Context) error; Rollback(ctx context.Context) error;
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+}

@@ -27,3 +27,14 @@ node_modules/
 .next/
 dist/
 build/
+# Backups
+backups/
+*.backup
+*.backup_*
+
+# Temporary scripts
+fix_*.sh
+setup_*.sh
+
+# EMQX data (configuração persistente não versionada)
+emqx/data/
