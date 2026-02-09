@@ -265,8 +265,8 @@ MQTT Activation:
    **Status:** ✅ Funciona
 
 5. **Backward Compatibility**
-   - Device antigo (token UUID) continua funcionando
-   **Status:** ✅ Funciona
+   - Removido: fluxo antigo por token UUID não é mais garantido
+   **Status:** ✅ Conforme docs atuais
 
 ---
 
@@ -481,7 +481,7 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 | **Tests** | Unit | ❌ 0% | ❌ Missing |
 | **Tests** | Integration | ❌ 0% | ❌ Missing |
 
-**Score Total:** 85/100 (Base funcional, refinamentos pendentes)
+**Score Total:** removido (sem critério objetivo)
 
 ---
 
