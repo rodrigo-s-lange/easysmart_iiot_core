@@ -117,15 +117,15 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(context.Background())
 
-	// Set tenant context for RLS on TimescaleDB
-	_, err = tx.Exec(context.Background(), `SET LOCAL app.current_tenant_id = $1`, tenantID)
+	// Set tenant context for RLS on TimescaleDB (use set_config to allow parameters)
+	_, err = tx.Exec(context.Background(), "SELECT set_config('app.current_tenant_id', $1, true)", tenantID)
 	if err != nil {
 		log.Printf("timescale set context error: %v", err)
 		metrics.TelemetryRejected("db_error")
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	_, err = tx.Exec(context.Background(), `SET LOCAL app.current_user_role = 'service'`)
+	_, err = tx.Exec(context.Background(), "SELECT set_config('app.current_user_role', $1, true)", "service")
 	if err != nil {
 		log.Printf("timescale set context error: %v", err)
 		metrics.TelemetryRejected("db_error")
@@ -172,11 +172,17 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 
 // GetLatest handles latest telemetry retrieval
 func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
-	deviceToken := r.URL.Query().Get("token")
+	deviceIDParam := r.URL.Query().Get("device_id")
+	deviceLabel := r.URL.Query().Get("device_label")
+	deviceToken := r.URL.Query().Get("token") // legacy
 	slotStr := r.URL.Query().Get("slot")
 
-	if deviceToken == "" || slotStr == "" {
-		utils.WriteError(w, http.StatusBadRequest, "token and slot are required")
+	if slotStr == "" {
+		utils.WriteError(w, http.StatusBadRequest, "slot is required")
+		return
+	}
+	if deviceIDParam == "" && deviceLabel == "" && deviceToken == "" {
+		utils.WriteError(w, http.StatusBadRequest, "device_id or device_label is required")
 		return
 	}
 
@@ -188,9 +194,21 @@ func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 
 	// Find device
 	var deviceID string
-	err = h.Postgres.QueryRow(context.Background(), `
-		SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
-	`, deviceToken).Scan(&deviceID)
+	switch {
+	case deviceIDParam != "":
+		err = h.Postgres.QueryRow(context.Background(), `
+			SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
+		`, deviceIDParam).Scan(&deviceID)
+	case deviceLabel != "":
+		err = h.Postgres.QueryRow(context.Background(), `
+			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
+		`, deviceLabel).Scan(&deviceID)
+	default:
+		// legacy fallback (token previously used)
+		err = h.Postgres.QueryRow(context.Background(), `
+			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
+		`, deviceToken).Scan(&deviceID)
+	}
 
 	if err != nil {
 		utils.WriteError(w, http.StatusNotFound, "Device not found or inactive")

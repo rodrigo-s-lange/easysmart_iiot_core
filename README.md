@@ -138,9 +138,12 @@ CORS_ALLOWED_HEADERS=Authorization,Content-Type
 `POST /api/telemetry`
 
 **Cache do último valor**
-`GET /api/telemetry/latest?token=DEVICE_ID&slot=0`
+- Por `device_id`:
+  `GET /api/telemetry/latest?device_id=DEVICE_ID&slot=0`
+- Por `device_label`:
+  `GET /api/telemetry/latest?device_label=DEVICE_LABEL&slot=0`
 - Se não houver cache: retorna `200` com `{}`.
-**Nota:** o parâmetro `token` atualmente é o `device_id` (legado; renomear depois).
+**Nota:** o parâmetro `token` é legado e não deve ser usado.
 
 ## EMQX (auth + rule engine)
 

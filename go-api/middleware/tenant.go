@@ -33,14 +33,14 @@ func (m *TenantContextMiddleware) SetContext(next http.Handler) http.Handler {
 		}
 		defer tx.Rollback(r.Context())
 
-		// Set session variables
-		_, err = tx.Exec(r.Context(), "SET LOCAL app.current_tenant_id = $1", tenantID)
+		// Set session variables (use set_config to allow parameters)
+		_, err = tx.Exec(r.Context(), "SELECT set_config('app.current_tenant_id', $1, true)", tenantID)
 		if err != nil {
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
 
-		_, err = tx.Exec(r.Context(), "SET LOCAL app.current_user_role = $1", role)
+		_, err = tx.Exec(r.Context(), "SELECT set_config('app.current_user_role', $1, true)", role)
 		if err != nil {
 			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
