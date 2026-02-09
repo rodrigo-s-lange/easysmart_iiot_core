@@ -31,6 +31,14 @@ Plataforma Industrial IoT focada em ingestão MQTT, persistência de telemetria 
 - **Redis 7** (6379): rate limit + cache do último valor.
 - **Go API** (3001): webhook de ingestão e endpoints auxiliares.
 - **Cloudflare Tunnel**: WSS externo (`mqtt.easysmart.com.br:443`).
+- **Frontend**: **Next.js + Tailwind + shadcn/ui** (dashboards por usuário/tenant).
+
+## Frontend (decisão)
+
+**Stack definida para o dashboard:**
+- **Next.js** (rotas protegidas, SSR/CSR híbrido, auth por tenant).
+- **Tailwind CSS** (UI rápida e consistente).
+- **shadcn/ui** (componentes prontos e customizáveis).
 
 ## Serviços e portas
 
@@ -344,8 +352,8 @@ iiot_platform/
 
 ## Próximos passos sugeridos
 
-- Frontend dashboard (Next.js).
-- Multi-tenant (ACLs por tenant).
+- Frontend dashboard (Next.js + Tailwind + shadcn/ui).
+- Refinar multi-tenant (permissões e auditoria).
 - Comandos bidirecionais (MQTT publish).
 - Grafana dashboards.
 
