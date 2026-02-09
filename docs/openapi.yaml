@@ -56,7 +56,7 @@ components:
       required: [email, password]
       properties:
         email: { type: string, format: email }
-        password: { type: string, minLength: 8 }
+        password: { type: string, minLength: 8, example: "Abcdef1!" }
     LoginRequest:
       type: object
       required: [email, password]
@@ -233,8 +233,14 @@ paths:
           description: OK
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Device already claimed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /api/devices/bootstrap:
     post:
@@ -291,6 +297,13 @@ paths:
       summary: Telemetry webhook (EMQX Rule Engine)
       security:
         - apiKeyAuth: []
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+          example: "Bearer emqxwh01_production_key_2026_secure"
       requestBody:
         required: true
         content:
