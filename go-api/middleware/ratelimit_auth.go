@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"iiot-go-api/metrics"
 	"iiot-go-api/utils"
 	"net"
 	"net/http"
@@ -65,6 +66,7 @@ func (rl *RateLimitAuth) Limit(next http.Handler) http.Handler {
 
 		// Check if limit exceeded
 		if val > rl.MaxAttempts {
+			metrics.AuthRateLimited(r.URL.Path)
 			// Get TTL for Retry-After header
 			ttl, _ := rl.Redis.TTL(ctx, key).Result()
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(ttl.Seconds())))

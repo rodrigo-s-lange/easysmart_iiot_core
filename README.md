@@ -113,6 +113,11 @@ curl http://localhost:3001/health/live
 curl http://localhost:3001/health/ready
 ```
 
+**Metrics (Prometheus)**
+```bash
+curl http://localhost:3001/metrics
+```
+
 **CORS (confirmado)**
 - Implementado via middleware (`go-api/middleware/cors.go`).
 - **Só ativa se** `CORS_ALLOWED_ORIGINS` estiver preenchido no `.env`.
@@ -241,16 +246,12 @@ Logs de bloqueio (Go API):
 
 ## Próximas implementações (curto prazo)
 
-1. **Observabilidade mínima**
-   - Endpoint `/metrics` (Prometheus).
-   - Contadores de ingestão, erros e rate-limit.
-
-2. **Segurança operacional**
+1. **Segurança operacional**
    - Rotação de `JWT_SECRET` e `MANUFACTURING_MASTER_KEY`.
    - Backups automáticos + teste de restore.
    - Alertas para falhas de bridge/DB.
 
-3. **Provisionamento: testes E2E + reset**
+2. **Provisionamento: testes E2E + reset**
    - Testes end-to-end do fluxo completo.
    - Endpoint de reset do device com auditoria.
 

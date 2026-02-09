@@ -15,6 +15,8 @@ import (
 	"iiot-go-api/handlers"
 	"iiot-go-api/middleware"
 	"iiot-go-api/utils"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -116,6 +118,8 @@ func main() {
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
 	})
+
+	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// Auth endpoints (with rate limiting, no JWT auth required)
 	mux.Handle("POST /api/auth/register", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Register)))

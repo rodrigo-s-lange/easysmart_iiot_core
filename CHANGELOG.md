@@ -48,3 +48,6 @@ All notable changes to this project will be documented in this file.
 
 ### Config
 - Removed EMQX listener rate limiting (managed in Go API instead).
+
+### Added
+- Prometheus metrics endpoint (`/metrics`) with basic counters.

@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"iiot-go-api/metrics"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -35,6 +37,8 @@ func Logging(next http.Handler) http.Handler {
 		if sw.status == 0 {
 			sw.status = http.StatusOK
 		}
+
+		metrics.ObserveHTTP(r.Method, r.URL.Path, strconv.Itoa(sw.status))
 
 		reqID, _ := r.Context().Value("request_id").(string)
 		slog.Info("http_request",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"iiot-go-api/config"
+	"iiot-go-api/metrics"
 	"iiot-go-api/models"
 	"iiot-go-api/utils"
 	"log"
@@ -45,16 +46,19 @@ func NewTelemetryHandler(pg, ts *pgxpool.Pool, rdb *redis.Client, cfg *config.Co
 func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	var req models.TelemetryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		metrics.TelemetryRejected("invalid_json")
 		utils.WriteError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
 	if err := utils.ValidateStruct(&req); err != nil {
+		metrics.TelemetryRejected("validation")
 		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
 		return
 	}
 
 	deviceToken, slot, err := parseTopic(req.Topic)
 	if err != nil {
+		metrics.TelemetryRejected("invalid_topic")
 		utils.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -63,11 +67,13 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	if h.Limiter != nil {
 		allowed, err := h.Limiter.Allow(context.Background(), deviceToken, slot)
 		if err != nil && !h.Config.RateLimitFailOpen {
+			metrics.TelemetryRejected("rate_limiter_unavailable")
 			utils.WriteError(w, http.StatusServiceUnavailable, "Rate limiter unavailable")
 			return
 		}
 		if !allowed {
 			log.Printf("rate_limit_exceeded device=%s slot=%d", deviceToken, slot)
+			metrics.TelemetryRejected("rate_limit")
 			utils.WriteError(w, http.StatusTooManyRequests, "Rate limit exceeded")
 			return
 		}
@@ -80,6 +86,7 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	`, deviceToken).Scan(&deviceID)
 
 	if err != nil {
+		metrics.TelemetryRejected("device_not_found")
 		utils.WriteError(w, http.StatusNotFound, "Device not found or inactive")
 		return
 	}
@@ -87,6 +94,7 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	// Parse timestamp
 	ts, err := parseTimestamp(req.Timestamp)
 	if err != nil {
+		metrics.TelemetryRejected("invalid_timestamp")
 		utils.WriteError(w, http.StatusBadRequest, "Invalid timestamp")
 		return
 	}
@@ -99,9 +107,12 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("insert error: %v", err)
+		metrics.TelemetryRejected("db_error")
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
+
+	metrics.TelemetryIngested(strconv.Itoa(slot))
 
 	// Update cache
 	if h.Redis != nil {
