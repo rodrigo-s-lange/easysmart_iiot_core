@@ -46,6 +46,46 @@ type JWTClaims struct {
 	IssuedAt    int64    `json:"iat"`
 }
 
+// RegisterRequest represents a user registration request
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// RegisterResponse represents a registration response
+type RegisterResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+	User         User   `json:"user"`
+}
+
+// LoginRequest represents a login request
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// LoginResponse represents a login response
+type LoginResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+	User         User   `json:"user"`
+}
+
+// RefreshRequest represents a token refresh request
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// RefreshResponse represents a token refresh response
+type RefreshResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+}
+
 // ClaimDeviceRequest represents a device claim request
 type ClaimDeviceRequest struct {
 	DeviceLabel string `json:"device_label"`
@@ -70,20 +110,6 @@ type SecretResponse struct {
 	DeviceSecret string `json:"device_secret"`
 }
 
-// LoginRequest represents a login request
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-// LoginResponse represents a login response
-type LoginResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-	User         User   `json:"user"`
-}
-
 // ErrorResponse represents an error response
 type ErrorResponse struct {
 	Error string `json:"error"`
@@ -104,3 +130,4 @@ type LatestTelemetry struct {
 	Value     json.RawMessage `json:"value"`
 	Timestamp string          `json:"timestamp"`
 }
+

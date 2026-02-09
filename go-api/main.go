@@ -42,7 +42,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Health check
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJSON(w, http.StatusOK, map[string]string{
 			"status":    "ok",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -50,14 +50,16 @@ func main() {
 	})
 
 	// Auth endpoints (no auth required)
-	mux.HandleFunc("/api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
+	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/refresh", authHandler.Refresh)
 
 	// Device bootstrap (no auth required - devices poll this)
-	mux.HandleFunc("/api/devices/bootstrap", deviceHandler.Bootstrap)
-	mux.HandleFunc("/api/devices/secret", deviceHandler.GetSecret)
+	mux.HandleFunc("GET /api/devices/bootstrap", deviceHandler.Bootstrap)
+	mux.HandleFunc("GET /api/devices/secret", deviceHandler.GetSecret)
 
 	// Device claim (requires JWT + permission)
-	mux.Handle("/api/devices/claim",
+	mux.Handle("POST /api/devices/claim",
 		jwtMiddleware.Authenticate(
 			middleware.RequirePermission("devices:provision")(
 				http.HandlerFunc(deviceHandler.ClaimDevice),
@@ -66,7 +68,7 @@ func main() {
 	)
 
 	// Device list (requires JWT + RLS)
-	mux.Handle("/api/devices",
+	mux.Handle("GET /api/devices",
 		jwtMiddleware.Authenticate(
 			tenantMiddleware.SetContext(
 				middleware.RequirePermission("devices:read")(
@@ -77,14 +79,14 @@ func main() {
 	)
 
 	// Telemetry webhook (requires API key)
-	mux.Handle("/api/telemetry",
+	mux.Handle("POST /api/telemetry",
 		apiKeyMiddleware.Authenticate(
 			http.HandlerFunc(telemetryHandler.Webhook),
 		),
 	)
 
 	// Telemetry latest (public for now, can add auth later)
-	mux.HandleFunc("/api/telemetry/latest", telemetryHandler.GetLatest)
+	mux.HandleFunc("GET /api/telemetry/latest", telemetryHandler.GetLatest)
 
 	// Logging middleware
 	handler := loggingMiddleware(mux)
@@ -100,6 +102,18 @@ func main() {
 	}
 
 	log.Printf("🚀 Go API running on %s", addr)
+	log.Printf("📋 Registered routes:")
+	log.Printf("  POST   /api/auth/register")
+	log.Printf("  POST   /api/auth/login")
+	log.Printf("  POST   /api/auth/refresh")
+	log.Printf("  GET    /api/devices/bootstrap")
+	log.Printf("  GET    /api/devices/secret")
+	log.Printf("  POST   /api/devices/claim")
+	log.Printf("  GET    /api/devices")
+	log.Printf("  POST   /api/telemetry")
+	log.Printf("  GET    /api/telemetry/latest")
+	log.Printf("  GET    /health")
+	
 	log.Fatal(server.ListenAndServe())
 }
 

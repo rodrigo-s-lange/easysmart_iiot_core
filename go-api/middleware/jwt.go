@@ -38,20 +38,12 @@ func (m *JWTMiddleware) Authenticate(next http.Handler) http.Handler {
 		// Add claims to context
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, "jwt_claims", claims)
-		ctx = context.WithValue(ctx, "user_id", claims["user_id"].(string))
-		ctx = context.WithValue(ctx, "tenant_id", claims["tenant_id"].(string))
-		ctx = context.WithValue(ctx, "role", claims["role"].(string))
-
-		permissions := []string{}
-		if perms, ok := claims["permissions"].([]interface{}); ok {
-			for _, p := range perms {
-				if str, ok := p.(string); ok {
-					permissions = append(permissions, str)
-				}
-			}
-		}
-		ctx = context.WithValue(ctx, "permissions", permissions)
+		ctx = context.WithValue(ctx, "user_id", claims.UserID)
+		ctx = context.WithValue(ctx, "tenant_id", claims.TenantID)
+		ctx = context.WithValue(ctx, "role", claims.Role)
+		ctx = context.WithValue(ctx, "permissions", claims.Permissions)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
