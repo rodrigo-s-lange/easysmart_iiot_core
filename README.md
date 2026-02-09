@@ -113,6 +113,8 @@ mosquitto_sub -h 192.168.0.99 -p 1883 \
 **OpenAPI (documentação REST)**
 - Arquivo: `docs/openapi.yaml`
 - Base URL: `http://localhost:3001`
+- Swagger UI (local): `http://localhost:8088`
+- Webhook auth: `Authorization: Bearer <API_KEY>` (ver `.env` em `EMQX_WEBHOOK_API_KEY`)
 
 **Health**
 ```bash
