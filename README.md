@@ -105,6 +105,18 @@ curl http://localhost:3001/health/live
 curl http://localhost:3001/health/ready
 ```
 
+**CORS (confirmado)**
+- Implementado via middleware (`go-api/middleware/cors.go`).
+- **Só ativa se** `CORS_ALLOWED_ORIGINS` estiver preenchido no `.env`.
+- Se estiver vazio, a API **não** adiciona headers CORS (comportamento intencional).
+
+Exemplo:
+```
+CORS_ALLOWED_ORIGINS=http://localhost:3000,https://app.example.com
+CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
+CORS_ALLOWED_HEADERS=Authorization,Content-Type
+```
+
 **Webhook (EMQX Rule Engine)**
 `POST /api/telemetry`
 
@@ -218,6 +230,21 @@ Logs de bloqueio (Go API):
    - MQTT `username = device_label`  
    - MQTT `password = device_secret`  
    - Topic usa `tenant_id` + `device_id`
+
+## Próximas implementações (curto prazo)
+
+1. **Observabilidade mínima**
+   - Endpoint `/metrics` (Prometheus).
+   - Contadores de ingestão, erros e rate-limit.
+
+2. **Segurança operacional**
+   - Rotação de `JWT_SECRET` e `MANUFACTURING_MASTER_KEY`.
+   - Backups automáticos + teste de restore.
+   - Alertas para falhas de bridge/DB.
+
+3. **Provisionamento: testes E2E + reset**
+   - Testes end-to-end do fluxo completo.
+   - Endpoint de reset do device com auditoria.
 
 **Segurança:**
 - `MANUFACTURING_MASTER_KEY` fica **apenas** no `.env` (não vai para o banco).

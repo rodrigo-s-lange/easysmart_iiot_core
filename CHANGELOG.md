@@ -41,3 +41,10 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - EMQX auth/ACL queries wired to PostgreSQL.
 - `docker-compose.yml` now loads `.env` via `env_file`.
+## [Unreleased]
+### Docs
+- Documented CORS behavior and configuration.
+- Added short-term implementation roadmap (observability, operational security, provisioning tests/reset).
+
+### Config
+- Removed EMQX listener rate limiting (managed in Go API instead).
