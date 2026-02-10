@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: IIoT Platform API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     API do backend da plataforma IIoT.
     Esta especificacao documenta endpoints atuais (auth, devices, telemetry).
@@ -32,25 +32,29 @@ components:
         request_id:
           type: string
       required: [error]
-    TokenResponse:
+    UserObject:
       type: object
       properties:
-        access_token:
-          type: string
-        refresh_token:
-          type: string
-        expires_in:
-          type: integer
-          example: 3600
-        user:
-          type: object
-          properties:
-            user_id: { type: string, format: uuid }
-            tenant_id: { type: string, format: uuid }
-            email: { type: string }
-            role: { type: string }
-            status: { type: string }
-            created_at: { type: string, format: date-time }
+        user_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid, nullable: true }
+        email: { type: string }
+        role: { type: string, enum: [super_admin, tenant_admin, tenant_user] }
+        status: { type: string, enum: [active, suspended, deleted] }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time, nullable: true }
+    AuthResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, example: 3600 }
+        user: { $ref: "#/components/schemas/UserObject" }
+    RefreshResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, example: 3600 }
     RegisterRequest:
       type: object
       required: [email, password]
@@ -74,6 +78,11 @@ components:
       properties:
         device_id: { type: string, format: uuid }
         claim_code: { type: string }
+    ClaimResponse:
+      type: object
+      properties:
+        device_id: { type: string, format: uuid }
+        message: { type: string }
     BootstrapRequest:
       type: object
       required: [device_id, timestamp, signature]
@@ -81,6 +90,12 @@ components:
         device_id: { type: string, format: uuid }
         timestamp: { type: string, format: date-time }
         signature: { type: string }
+    BootstrapResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [unclaimed, claimed, active, suspended, revoked] }
+        device_id: { type: string, format: uuid }
+        poll_interval: { type: integer, example: 60 }
     SecretRequest:
       type: object
       required: [device_id, timestamp, signature]
@@ -99,6 +114,20 @@ components:
       properties:
         device_id: { type: string, format: uuid }
         confirmation: { type: string, example: RESET }
+    ResetResponse:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+        message: { type: string, example: "Device reset to unclaimed" }
+    DeviceSummary:
+      type: object
+      properties:
+        device_id: { type: string, format: uuid }
+        device_label: { type: string }
+        status: { type: string, enum: [unclaimed, claimed, active, suspended, revoked] }
+        firmware_version: { type: string, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
     TelemetryWebhookRequest:
       type: object
       required: [topic, payload]
@@ -109,6 +138,12 @@ components:
           type: object
           example: { "value": 23.5 }
         timestamp: { type: string }
+    TelemetryWebhookResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        device_id: { type: string, format: uuid }
+        slot: { type: integer }
     LatestTelemetry:
       type: object
       properties:
@@ -116,6 +151,13 @@ components:
         slot: { type: integer }
         value: { type: object }
         timestamp: { type: string, format: date-time }
+    ActiveSlotsResponse:
+      type: object
+      properties:
+        device_id: { type: string, format: uuid }
+        slots:
+          type: array
+          items: { type: integer }
 
 paths:
   /health:
@@ -135,12 +177,12 @@ paths:
   /health/ready:
     get:
       tags: [Health]
-      summary: Readiness check
+      summary: Readiness check (Postgres + TimescaleDB + Redis)
       responses:
         "200":
-          description: OK
+          description: All dependencies OK
         "503":
-          description: Dependency unavailable
+          description: One or more dependencies unavailable
   /metrics:
     get:
       tags: [Health]
@@ -152,7 +194,10 @@ paths:
   /api/auth/register:
     post:
       tags: [Auth]
-      summary: Register user
+      summary: Register user (creates tenant automatically)
+      description: |
+        First user becomes super_admin. Subsequent users get their own tenant as tenant_admin.
+        Password must be 8+ chars with uppercase, lowercase, number, and special char.
       requestBody:
         required: true
         content:
@@ -163,9 +208,9 @@ paths:
           description: Created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenResponse" }
+              schema: { $ref: "#/components/schemas/AuthResponse" }
         "400":
-          description: Invalid input
+          description: Invalid input (email format, password strength)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -189,9 +234,14 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenResponse" }
+              schema: { $ref: "#/components/schemas/AuthResponse" }
         "401":
           description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Account not active
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -199,7 +249,10 @@ paths:
   /api/auth/refresh:
     post:
       tags: [Auth]
-      summary: Refresh tokens
+      summary: Refresh tokens (rotation with blacklist)
+      description: |
+        Issues new access + refresh tokens. Old refresh token is blacklisted (one-time use).
+        Returns current role/tenant/permissions from DB (not from old token).
       requestBody:
         required: true
         content:
@@ -210,9 +263,47 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenResponse" }
+              schema: { $ref: "#/components/schemas/RefreshResponse" }
         "401":
-          description: Invalid token
+          description: Invalid or already-used refresh token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Account not active
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Token validation unavailable (Redis down, fail-closed)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/devices:
+    get:
+      tags: [Devices]
+      summary: List devices for current tenant
+      description: |
+        Returns all devices belonging to the authenticated user's tenant.
+        Requires JWT with `devices:read` permission. Results are scoped by tenant_id.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeviceSummary" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Missing devices:read permission
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -220,7 +311,10 @@ paths:
   /api/devices/claim:
     post:
       tags: [Devices]
-      summary: Claim device
+      summary: Claim device (assign to tenant)
+      description: |
+        Validates claim_code against bcrypt hash. Generates device_secret (cached in Redis 5min for one-time retrieval).
+        Requires JWT with `devices:provision` permission.
       security:
         - bearerAuth: []
       requestBody:
@@ -230,14 +324,22 @@ paths:
             schema: { $ref: "#/components/schemas/ClaimRequest" }
       responses:
         "200":
-          description: OK
+          description: Device claimed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClaimResponse" }
         "401":
-          description: Unauthorized
+          description: Invalid claim code or unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Device already claimed
+          description: Device already claimed or missing claim code
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -245,20 +347,39 @@ paths:
   /api/devices/bootstrap:
     post:
       tags: [Devices]
-      summary: Device bootstrap (HMAC)
+      summary: Device bootstrap (HMAC polling)
+      description: |
+        Device polls this endpoint to check its status. Signature is HMAC-SHA256(MANUFACTURING_MASTER_KEY, device_id:timestamp).
+        Timestamp must be within configured skew window (default 5min).
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/BootstrapRequest" }
       responses:
-        "200": { description: OK }
-        "401": { description: Unauthorized }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BootstrapResponse" }
+        "401":
+          description: Invalid HMAC signature or timestamp
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /api/devices/secret:
     post:
       tags: [Devices]
-      summary: Device secret retrieval (HMAC)
+      summary: Device secret retrieval (HMAC, one-time)
+      description: |
+        Returns device_secret for MQTT authentication. If cached secret expired, re-generates and updates DB.
+        Device must be in 'claimed' status.
       requestBody:
         required: true
         content:
@@ -270,8 +391,23 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SecretResponse" }
+        "401":
+          description: Invalid HMAC signature or timestamp
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Device not ready for secret retrieval
+          description: Device not ready for secret retrieval (not in claimed status)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Cache unavailable
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -280,6 +416,9 @@ paths:
     post:
       tags: [Devices]
       summary: Reset device to unclaimed
+      description: |
+        Resets device status, clears tenant/owner/secrets. Requires JWT with `devices:write` permission.
+        tenant_admin/super_admin can reset any device in their tenant; tenant_user only their own.
       security:
         - bearerAuth: []
       requestBody:
@@ -288,36 +427,80 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ResetRequest" }
       responses:
-        "200": { description: OK }
-        "401": { description: Unauthorized }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResetResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found or not authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /api/telemetry:
     post:
       tags: [Telemetry]
       summary: Telemetry webhook (EMQX Rule Engine)
+      description: |
+        Receives telemetry from EMQX Rule Engine. Validates device, applies rate limiting,
+        persists to TimescaleDB (with RLS), updates Redis cache, and marks device as active.
       security:
         - apiKeyAuth: []
-      parameters:
-        - in: header
-          name: Authorization
-          required: true
-          schema:
-            type: string
-          example: "Bearer emqxwh01_production_key_2026_secure"
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/TelemetryWebhookRequest" }
       responses:
-        "200": { description: OK }
-        "401": { description: Invalid API key }
-        "500": { description: Internal server error }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TelemetryWebhookResponse" }
+        "400":
+          description: Invalid JSON, topic format, or timestamp
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Invalid API key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found or inactive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: Rate limit exceeded (device or slot)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Rate limiter unavailable (fail-closed mode)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /api/telemetry/latest:
     get:
       tags: [Telemetry]
       summary: Latest telemetry from Redis cache
+      description: |
+        Returns the most recent cached value for a device/slot. If no cache exists, returns empty object.
+        Accepts device_id or device_label (one is required).
       parameters:
         - in: query
           name: device_id
@@ -333,17 +516,33 @@ paths:
           required: true
       responses:
         "200":
-          description: OK
+          description: OK (returns empty object {} if no cache)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LatestTelemetry" }
-        "400": { description: Invalid request }
-        "404": { description: Device not found or inactive }
+        "400":
+          description: Missing slot or device identifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found or inactive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Cache unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /api/telemetry/slots:
     get:
       tags: [Telemetry]
       summary: Active slots from Redis cache
+      description: |
+        Returns sorted list of slot numbers that have cached latest values.
+        Accepts device_id or device_label (one is required).
       parameters:
         - in: query
           name: device_id
@@ -358,12 +557,20 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  device_id: { type: string, format: uuid }
-                  slots:
-                    type: array
-                    items: { type: integer }
-        "400": { description: Invalid request }
-        "404": { description: Device not found or inactive }
+              schema: { $ref: "#/components/schemas/ActiveSlotsResponse" }
+        "400":
+          description: Missing device identifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Device not found or inactive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Cache unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+

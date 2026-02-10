@@ -140,6 +140,12 @@ CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
 CORS_ALLOWED_HEADERS=Authorization,Content-Type
 ```
 
+**Listar devices do tenant**
+`GET /api/devices`
+- Requer JWT com permissão `devices:read`.
+- Retorna devices filtrados por `tenant_id` do token.
+- Response: array de `{device_id, device_label, status, firmware_version, last_seen_at, created_at}`.
+
 **Webhook (EMQX Rule Engine)**
 `POST /api/telemetry`
 
@@ -346,7 +352,7 @@ curl -I http://localhost:8083
 ## Estrutura do repositório
 
 ```
-iiot_platform/
+easysmart_iiot_core/
 ├── go-api/                 # Go API (ingestão + cache)
 ├── database/
 │   ├── init/              # Schema inicial (Postgres)

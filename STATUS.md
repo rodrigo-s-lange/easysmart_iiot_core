@@ -2,8 +2,8 @@
 
 ## ✅ Status: Sistema Base Funcional (Auth + Provisionamento + Telemetria)
 
-**Última Atualização:** 2026-02-09  
-**Progresso MVP:** base funcional pronta; faltam refinamentos operacionais
+**Última Atualização:** 2026-02-10  
+**Progresso MVP:** Fases A e B concluídas; faltam Device CRUD, testes e frontend
 
 **Nota:** Este documento mistura estado atual e arquitetura-alvo.  
 Seção "Fase A" indica o que está **implementado** vs **pendente**.
@@ -44,7 +44,7 @@ Corrigindo falhas que impedem produção profissional:
 ### Stack Tecnológico
 ```
 Frontend:   Next.js (planejado)
-API:        Go 1.21+ (Gin/net/http)
+API:        Go 1.21+ (net/http)
 Auth:       JWT (access + refresh tokens)
 Database:   PostgreSQL 16 (auth/devices)
 Telemetry:  TimescaleDB 2.14.2 (365 dias)
@@ -293,32 +293,14 @@ MQTT Activation:
 - Rate limiting funcional
 - Telemetry pipeline completa
 
-### ❌ GAPS CRÍTICOS (Impedem Produção)
+### ✅ GAPS CRÍTICOS (Todos resolvidos)
 
-1. **Falta Register Endpoint**
-   - Não consegue criar usuários via API
-   - **Prioridade:** P0
-
-2. **Falta Refresh Token Endpoint**
-   - JWT expira em 1h sem renovação
-   - **Prioridade:** P0
-
-3. **Falta Input Validation**
-   - Aceita emails inválidos, senhas fracas
-   - **Prioridade:** P0
-
-4. **Error Handling Inconsistente**
-   - Logs não estruturados
-   - Debug impossível em produção
-   - **Prioridade:** P0
-
-5. **Sem Graceful Shutdown**
-   - Perde conexões em restart
-   - **Prioridade:** P0
-
-6. **Sem CORS**
-   - Frontend bloqueado
-   - **Prioridade:** P0
+1. ~~Falta Register Endpoint~~ → Implementado (auth.go)
+2. ~~Falta Refresh Token Endpoint~~ → Implementado com rotation + blacklist (auth.go)
+3. ~~Falta Input Validation~~ → validator v10 + password strength
+4. ~~Error Handling Inconsistente~~ → slog JSON + request_id + panic recovery
+5. ~~Sem Graceful Shutdown~~ → Implementado (SIGTERM/SIGINT, timeout configurável)
+6. ~~Sem CORS~~ → Middleware configurável via env
 
 ### ⚠️ MELHORIAS IMPORTANTES
 
@@ -332,7 +314,7 @@ MQTT Activation:
 
 ## 📋 Roadmap de Desenvolvimento
 
-### ✅ Concluído (Base MVP - 85%)
+### ✅ Concluído (Base MVP + Fase A + Fase B)
 
 - [x] Database migration multi-tenant
 - [x] EMQX auth/ACL bcrypt
@@ -346,23 +328,23 @@ MQTT Activation:
 - [x] Mobile teste Android
 - [x] Backward compatibility
 
-### 🚧 Em Andamento (Fase A - 6h)
+### ✅ Concluído (Fase A - Backend Profissional)
 
-- [ ] Register endpoint + validation
-- [ ] Refresh token endpoint
-- [ ] Input validation (go-playground/validator)
-- [ ] Error handling estruturado
-- [ ] Graceful shutdown
-- [ ] CORS middleware
+- [x] Register endpoint + validation
+- [x] Refresh token endpoint (rotation + JTI blacklist)
+- [x] Input validation (go-playground/validator v10)
+- [x] Error handling estruturado (slog + request_id + panic recovery)
+- [x] Graceful shutdown (SIGTERM/SIGINT)
+- [x] CORS middleware (configurável via env)
 
 ### 📅 Próximas Fases
 
-**Fase B: Melhorias Importantes (P1) - 4h**
-- [ ] Health check completo (live/ready probes)
-- [ ] Structured logging (slog)
-- [ ] Request ID tracing
-- [ ] Rate limiting global
-- [ ] Metrics (Prometheus)
+**Fase B: Melhorias Importantes (P1) - Concluída**
+- [x] Health check completo (live/ready probes)
+- [x] Structured logging (slog JSON)
+- [x] Request ID tracing (X-Request-ID)
+- [x] Rate limiting auth (10/min por IP)
+- [x] Metrics (Prometheus /metrics)
 
 **Fase C: Device Provisioning (P0) - 4h**
 - [ ] Revisar/completar claim flow
@@ -473,24 +455,26 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 | Módulo | Funcionalidade | Status | Produção |
 |--------|----------------|--------|----------|
 | **Auth** | Login JWT | ✅ 100% | ✅ Ready |
-| **Auth** | Register | ❌ 0% | ❌ Missing |
-| **Auth** | Refresh Token | ❌ 0% | ❌ Missing |
+| **Auth** | Register | ✅ 100% | ✅ Ready |
+| **Auth** | Refresh Token (rotation + blacklist) | ✅ 100% | ✅ Ready |
 | **Devices** | List (tenant-scoped) | ✅ 100% | ✅ Ready |
-| **Devices** | Claim | ⚠️ 80% | 🔧 Needs review |
-| **Devices** | Bootstrap | ⚠️ 80% | 🔧 Needs review |
-| **Devices** | Secret Retrieval | ⚠️ 80% | 🔧 Needs review |
-| **Devices** | CRUD | ❌ 0% | ❌ Missing |
+| **Devices** | Claim | ✅ 100% | ✅ Ready |
+| **Devices** | Bootstrap | ✅ 100% | ✅ Ready |
+| **Devices** | Secret Retrieval | ✅ 100% | ✅ Ready |
+| **Devices** | CRUD (get/update/delete) | ❌ 0% | ❌ Missing |
 | **Telemetry** | Webhook Ingestion | ✅ 100% | ✅ Ready |
 | **Telemetry** | Latest Cache | ✅ 100% | ✅ Ready |
-| **Telemetry** | Query API | ❌ 0% | ❌ Missing |
+| **Telemetry** | Active Slots | ✅ 100% | ✅ Ready |
+| **Telemetry** | Query API (histórico) | ❌ 0% | ❌ Missing |
 | **MQTT** | Auth (bcrypt) | ✅ 100% | ✅ Ready |
 | **MQTT** | ACL (multi-tenant) | ✅ 100% | ✅ Ready |
 | **MQTT** | WSS Público | ✅ 100% | ✅ Ready |
-| **Rate Limit** | Device/Slot | ✅ 100% | ✅ Ready |
-| **Rate Limit** | Global IP/User | ❌ 0% | ❌ Missing |
-| **Observability** | Logs | ⚠️ 30% | ❌ Primitive |
-| **Observability** | Metrics | ❌ 0% | ❌ Missing |
-| **Observability** | Tracing | ❌ 0% | ❌ Missing |
+| **Rate Limit** | Device/Slot (telemetry) | ✅ 100% | ✅ Ready |
+| **Rate Limit** | Auth endpoints (IP) | ✅ 100% | ✅ Ready |
+| **Observability** | Logs (slog JSON) | ✅ 100% | ✅ Ready |
+| **Observability** | Metrics (Prometheus) | ✅ 100% | ✅ Ready |
+| **Observability** | Request ID tracing | ✅ 100% | ✅ Ready |
+| **Observability** | Distributed tracing | ❌ 0% | ❌ Missing |
 | **Tests** | Unit | ❌ 0% | ❌ Missing |
 | **Tests** | Integration | ❌ 0% | ❌ Missing |
 
@@ -506,11 +490,12 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 - [x] Telemetry salva no TimescaleDB ✅
 - [x] Multi-tenant isolation ✅
 - [x] Rate limiting ✅
-- [ ] Register/Refresh endpoints ❌ (Fase A)
-- [ ] Input validation ❌ (Fase A)
-- [ ] Error handling profissional ❌ (Fase A)
-- [ ] Device provisioning completo ⚠️ (Fase C)
-- [ ] Health checks ❌ (Fase B)
+- [x] Register/Refresh endpoints ✅ (Fase A)
+- [x] Input validation ✅ (Fase A)
+- [x] Error handling profissional ✅ (Fase A)
+- [x] Device provisioning (bootstrap/claim/secret/reset) ✅
+- [x] Health checks ✅ (Fase B)
+- [ ] Device CRUD completo ❌ (Fase C)
 - [ ] Frontend básico ❌ (Fase E)
 
 **Tempo para MVP completo:** ~20 horas de dev restantes
@@ -551,8 +536,8 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 **OS:** Ubuntu 24 (provável)  
 **Docker Compose:** Sim  
 **Cloudflare Tunnel:** Ativo (mqtt.easysmart.com.br)  
-**Última Sessão:** 2026-02-09 03:42 BRT  
-**Próxima Ação:** Fase A - Backend Profissional (6h)
+**Última Sessão:** 2026-02-10 03:42 BRT  
+**Próxima Ação:** Fase C - Device CRUD + Fase E - Frontend
 
 ---
 
@@ -581,4 +566,4 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 
 ---
 
-**Sistema estável. Pronto para Fase A - Backend Profissional.** 🚀
+**Sistema estável. Fases A e B concluídas. Próximo: Device CRUD e Frontend.**
