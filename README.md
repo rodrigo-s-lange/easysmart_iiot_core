@@ -36,6 +36,18 @@ Baseline (somente registrar como já aplicado, sem executar SQL):
 ./database/migrate.sh --target all --baseline
 ```
 
+## Testes (suite básica - P0)
+Escopo inicial coberto em `go test ./...`:
+- validação de auth (email/senha e JWT);
+- middleware crítico (JWT, permissões, rate-limit auth nil-safe, API key curta);
+- fluxo de devices (HMAC/timestamp e guardas de erro);
+- parser e guardas de telemetry (topic/timestamp e endpoints com contexto de tenant).
+
+Executar:
+```bash
+docker run --rm -v "$PWD/go-api":/src -w /src golang:1.22.4 sh -c "go test ./..."
+```
+
 ## Fluxo de provisionamento (atual)
 
 ### 1. Provisionamento direto (usuário autenticado)

@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Direct provisioning endpoint for logged-in users: `POST /api/devices/provision`.
 - MQTT broker config exposed for provisioning response: `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`.
 - Migration runner script with tracking table support: `database/migrate.sh`.
+- Basic Go test suite for auth/middleware/devices/telemetry utility flows.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
