@@ -32,6 +32,17 @@ All notable changes to this project will be documented in this file.
 - Observability stack in Docker Compose: Prometheus, Blackbox Exporter, Alertmanager, Grafana.
 - Prometheus alert rules for API down, readiness failing and 5xx spike.
 - Dedicated observability documentation: `docs/OBSERVABILITY.md`.
+- Reinforcement tests for P0 item 1:
+  - `go-api/handlers/auth_handler_test.go`
+  - `go-api/handlers/ratelimiter_test.go`
+  - `go-api/handlers/telemetry_utils_test.go`
+- Production validation scripts:
+  - `scripts/audit/test_tenant_isolation.sh`
+  - `scripts/audit/test_e2e_mqtt_ingest.sh`
+  - `scripts/audit/run_load_test.sh`
+  - `scripts/audit/load_telemetry_k6.js`
+  - `database/backup_restore.sh`
+- Production validation runbook: `docs/PRODUCTION_VALIDATION.md`.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
@@ -48,6 +59,7 @@ All notable changes to this project will be documented in this file.
 - API key middleware now rejects short keys safely (no panic).
 - Register flow now serializes first-user bootstrap via advisory lock (avoids multi-super-admin race).
 - Normalized migration ordering (`003/004/005`) and moved old single-tenant schema to `database/migrations/legacy/`.
+- `docs/ROADMAP_P0_P2.md` now includes explicit execution sequencing for P1 (P1.1 to P1.5).
 
 ### Docs
 - Documented CORS behavior and configuration.

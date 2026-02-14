@@ -38,3 +38,6 @@ setup_*.sh
 
 # EMQX data (configuração persistente não versionada)
 emqx/data/
+
+# Test/load artifacts
+artifacts/

@@ -2,6 +2,16 @@
 
 Este roadmap organiza o trabalho para levar o backend do estado atual para produção com previsibilidade.
 
+## Status atual (2026-02-14)
+- P0.1 (suite mínima de testes): **reforçado parcialmente** com novos testes unitários em auth/rate-limit/telemetry.
+- P0.1 pendente: integração com banco real para fechar RLS e fluxos completos de devices (`provision/claim/secret`).
+- P0.2, P0.3, P0.4, P0.5: acompanhar execução conforme checkpoints abaixo.
+- Validações operacionais mínimas adicionadas em scripts:
+  - `scripts/audit/test_tenant_isolation.sh`
+  - `scripts/audit/test_e2e_mqtt_ingest.sh`
+  - `database/backup_restore.sh`
+  - `scripts/audit/run_load_test.sh`
+
 ## P0 (bloqueia produção)
 
 ### 1) Suite mínima de testes backend (auth/devices/telemetry/RLS)
@@ -81,6 +91,42 @@ Este roadmap organiza o trabalho para levar o backend do estado atual para produ
   - procedimento de cleanup funcional;
   - sem violação de FK/triggers;
   - runbook operacional documentado.
+
+## Plano de execução P1 (ordem recomendada)
+
+### Sprint P1.1 (contrato + confiabilidade)
+- Entregas:
+  - padronização de erros HTTP (código + payload único);
+  - revisão de aderência do `docs/openapi.yaml` ao comportamento real.
+- Saída esperada:
+  - frontend integra sem condicionais por endpoint;
+  - exemplos e respostas de erro consistentes.
+
+### Sprint P1.2 (capacidade + operação)
+- Entregas:
+  - teste de carga básico MQTT/webhook com cenário reproduzível;
+  - relatório com throughput, latência e ponto de degradação.
+- Saída esperada:
+  - limites operacionais conhecidos antes de produção.
+
+### Sprint P1.3 (segurança operacional)
+- Entregas:
+  - rotação de segredos (`JWT_SECRET`, `MANUFACTURING_MASTER_KEY`, API keys) com procedimento testado.
+- Saída esperada:
+  - rotação sem downtime não planejado.
+
+### Sprint P1.4 (resiliência de dados)
+- Entregas:
+  - backup/restore automatizado de Postgres e TimescaleDB;
+  - validação de restore em ambiente limpo.
+- Saída esperada:
+  - RPO/RTO validados com script e checklist.
+
+### Sprint P1.5 (higiene de dados)
+- Entregas:
+  - rotina de cleanup/auditoria sem conflitos de FK.
+- Saída esperada:
+  - manutenção periódica de dados com integridade preservada.
 
 ## P2 (escala e maturidade)
 

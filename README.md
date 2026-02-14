@@ -50,17 +50,24 @@ Baseline (somente registrar como já aplicado, sem executar SQL):
 ./database/migrate.sh --target all --baseline
 ```
 
-## Testes (suite básica - P0)
-Escopo inicial coberto em `go test ./...`:
-- validação de auth (email/senha e JWT);
-- middleware crítico (JWT, permissões, rate-limit auth nil-safe, API key curta);
-- fluxo de devices (HMAC/timestamp e guardas de erro);
-- parser e guardas de telemetry (topic/timestamp e endpoints com contexto de tenant).
+## Testes (item 1 reforçado)
+Escopo atual coberto em `go test ./...`:
+- auth: validação de email/senha, body inválido e refresh com token incorreto;
+- middleware crítico: JWT, permissões, API key curta/inválida e comportamento seguro sem panic;
+- telemetry: validações de leitura com contexto de tenant, parser de payload e utilitários;
+- rate limit Redis: limites por dispositivo/segundo e por slot/minuto (com `miniredis`).
+
+Arquivos de reforço adicionados:
+- `go-api/handlers/auth_handler_test.go`
+- `go-api/handlers/ratelimiter_test.go`
+- `go-api/handlers/telemetry_utils_test.go`
 
 Executar:
 ```bash
-docker run --rm -v "$PWD/go-api":/src -w /src golang:1.22.4 sh -c "go test ./..."
+docker run --rm -v "$PWD/go-api":/src -w /src golang:1.22.4 sh -c "go test -p 1 ./..."
 ```
+
+Observação: ainda faltam testes de integração completos para fechar 100% dos critérios do item 1 (especialmente RLS ponta a ponta e fluxos de `devices/provision|claim|secret` com banco real).
 
 ## Fluxo de provisionamento (atual)
 
@@ -148,3 +155,4 @@ Configuração detalhada:
 - Contrato REST: `docs/openapi.yaml`
 - Roadmap técnico P0-P2: `docs/ROADMAP_P0_P2.md`
 - Observabilidade (monitoramento/alertas): `docs/OBSERVABILITY.md`
+- Validação mínima para produção/auditoria: `docs/PRODUCTION_VALIDATION.md`

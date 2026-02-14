@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +23,34 @@ func TestParseTopic(t *testing.T) {
 	_, _, _, err = parseTopic("invalid/topic")
 	if err == nil {
 		t.Fatalf("parseTopic expected error for invalid topic")
+	}
+}
+
+func TestTelemetryReadsValidation(t *testing.T) {
+	t.Parallel()
+
+	h := &TelemetryHandler{}
+	ctx := context.WithValue(context.Background(), "tenant_id", "11111111-1111-1111-1111-111111111111")
+
+	reqNoSlot := httptest.NewRequest(http.MethodGet, "/api/telemetry/latest?device_id=11111111-1111-1111-1111-111111111111", nil).WithContext(ctx)
+	wNoSlot := httptest.NewRecorder()
+	h.GetLatest(wNoSlot, reqNoSlot)
+	if wNoSlot.Code != http.StatusBadRequest {
+		t.Fatalf("GetLatest(no slot) status = %d, want %d", wNoSlot.Code, http.StatusBadRequest)
+	}
+
+	reqNoDevice := httptest.NewRequest(http.MethodGet, "/api/telemetry/latest?slot=0", nil).WithContext(ctx)
+	wNoDevice := httptest.NewRecorder()
+	h.GetLatest(wNoDevice, reqNoDevice)
+	if wNoDevice.Code != http.StatusBadRequest {
+		t.Fatalf("GetLatest(no device) status = %d, want %d", wNoDevice.Code, http.StatusBadRequest)
+	}
+
+	reqSlotsNoDevice := httptest.NewRequest(http.MethodGet, "/api/telemetry/slots", nil).WithContext(ctx)
+	wSlotsNoDevice := httptest.NewRecorder()
+	h.GetActiveSlots(wSlotsNoDevice, reqSlotsNoDevice)
+	if wSlotsNoDevice.Code != http.StatusBadRequest {
+		t.Fatalf("GetActiveSlots(no device) status = %d, want %d", wSlotsNoDevice.Code, http.StatusBadRequest)
 	}
 }
 
