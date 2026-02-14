@@ -146,6 +146,30 @@ services:
     depends_on:
       - go_api
 
+  emqx_bootstrap:
+    image: alpine:3.19
+    container_name: iiot_emqx_bootstrap
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - EMQX_API_URL=http://emqx:18083/api/v5
+      - EMQX_BOOTSTRAP_INTERVAL=60
+    command: >
+      sh -c "apk add --no-cache curl postgresql16-client >/dev/null &&
+      sh /bootstrap/emqx-bootstrap.sh"
+    volumes:
+      - ./docker/emqx-bootstrap.sh:/bootstrap/emqx-bootstrap.sh:ro
+    networks:
+      - iiot_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      go_api:
+        condition: service_healthy
+      emqx:
+        condition: service_started
+
 networks:
   iiot_network:
     name: iiot_platform_iiot_network

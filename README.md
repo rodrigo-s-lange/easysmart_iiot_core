@@ -21,6 +21,17 @@ docker-compose up -d
 docker-compose ps
 ```
 
+O serviço `emqx_bootstrap` reconcilia automaticamente (a cada 60s):
+- API key de webhook em `api_keys` (Postgres);
+- connector HTTP `api_webhook`;
+- action HTTP `send_to_api`;
+- rule `telemetry_ingest`.
+
+Isso evita perda de ingestão MQTT após restart/reboot.
+
+Variável obrigatória no `.env`:
+- `EMQX_WEBHOOK_API_KEY=<chave-longa-e-aleatoria>`
+
 ## Migrações (normalizado)
 - Migrações ativas Postgres: `database/migrations` (`002` a `005`)
 - Schema legado (não aplicar): `database/migrations/legacy/001_initial_schema.sql`

@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 - MQTT broker config exposed for provisioning response: `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`.
 - Migration runner script with tracking table support: `database/migrate.sh`.
 - Basic Go test suite for auth/middleware/devices/telemetry utility flows.
+- EMQX bootstrap reconciler service (`emqx_bootstrap`) to auto-restore webhook connector/action/rule after restarts.
+- New env var `EMQX_WEBHOOK_API_KEY` in `.env.example` for telemetry webhook authentication.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).

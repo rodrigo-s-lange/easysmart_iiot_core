@@ -9,6 +9,7 @@ import (
 	"iiot-go-api/metrics"
 	"iiot-go-api/models"
 	"iiot-go-api/utils"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -46,10 +47,20 @@ func NewTelemetryHandler(pg, ts *pgxpool.Pool, rdb *redis.Client, cfg *config.Co
 // Webhook handles EMQX Rule Engine webhook
 func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	var req models.TelemetryRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
 		metrics.TelemetryRejected("invalid_json")
 		utils.WriteError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
+	}
+	if err := json.Unmarshal(rawBody, &req); err != nil {
+		sanitized := sanitizeJSONEscapes(rawBody)
+		if err2 := json.Unmarshal(sanitized, &req); err2 != nil {
+			log.Printf("telemetry invalid json body=%s", string(rawBody))
+			metrics.TelemetryRejected("invalid_json")
+			utils.WriteError(w, http.StatusBadRequest, "Invalid JSON body")
+			return
+		}
 	}
 	if err := utils.ValidateStruct(&req); err != nil {
 		metrics.TelemetryRejected("validation")
@@ -174,6 +185,22 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		"device_id": deviceID,
 		"slot":      slot,
 	})
+}
+
+func sanitizeJSONEscapes(input []byte) []byte {
+	out := make([]byte, 0, len(input))
+	for i := 0; i < len(input); i++ {
+		if input[i] == '\\' && i+1 < len(input) {
+			next := input[i+1]
+			// Keep only structural JSON escapes and drop all others.
+			// EMQX templating may emit sequences like "\tenants/..." that break topic parsing.
+			if next != '"' && next != '\\' && next != '/' && next != 'u' {
+				continue
+			}
+		}
+		out = append(out, input[i])
+	}
+	return out
 }
 
 // GetLatest handles latest telemetry retrieval
