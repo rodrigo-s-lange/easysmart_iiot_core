@@ -1,0 +1,10 @@
+[Unit]
+Description=Run EasySmart IIoT Core backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:05:00 UTC
+Persistent=true
+Unit=easysmart_iiot_backup.service
+
+[Install]
+WantedBy=timers.target

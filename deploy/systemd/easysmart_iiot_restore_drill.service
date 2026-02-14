@@ -1,0 +1,9 @@
+[Unit]
+Description=EasySmart IIoT Core weekly restore drill
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rodrigo/easysmart_iiot_core
+ExecStart=/usr/bin/bash -lc './scripts/ops/run_restore_drill_weekly.sh'

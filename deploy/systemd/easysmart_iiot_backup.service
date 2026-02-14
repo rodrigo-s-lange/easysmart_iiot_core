@@ -1,0 +1,9 @@
+[Unit]
+Description=EasySmart IIoT Core daily backup
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rodrigo/easysmart_iiot_core
+ExecStart=/usr/bin/bash -lc './scripts/ops/run_backup_daily.sh'

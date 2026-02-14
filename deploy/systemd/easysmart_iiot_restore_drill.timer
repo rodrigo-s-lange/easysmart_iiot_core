@@ -1,0 +1,10 @@
+[Unit]
+Description=Run EasySmart IIoT Core restore drill weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 03:20:00 UTC
+Persistent=true
+Unit=easysmart_iiot_restore_drill.service
+
+[Install]
+WantedBy=timers.target

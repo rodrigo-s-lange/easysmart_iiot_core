@@ -173,3 +173,4 @@ Configuração detalhada:
 - SLO/SLI por serviço: `docs/SLO_SLI.md`
 - Runbooks operacionais: `docs/RUNBOOKS.md`
 - Validação mínima para produção/auditoria: `docs/PRODUCTION_VALIDATION.md`
+- Resiliência de dados (backup/restore, retenção, RPO/RTO): `docs/DATA_RESILIENCE.md`

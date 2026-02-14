@@ -47,6 +47,14 @@ All notable changes to this project will be documented in this file.
 - SLO/SLI documentation by service: `docs/SLO_SLI.md`.
 - Incident runbooks: `docs/RUNBOOKS.md`.
 - Telegram Ops Bot (`telegram_ops_bot`) for operational chat commands and event notifications (new user/device).
+- Data resilience automation:
+  - `scripts/ops/run_backup_daily.sh`
+  - `scripts/ops/run_restore_drill_weekly.sh`
+  - `deploy/systemd/*` timers/services for scheduled backup + restore drill
+  - `docs/DATA_RESILIENCE.md`
+- Tenant telemetry retention base:
+  - migration `database/timescale/migrations/003_tenant_retention_policy.sql`
+  - archive/prune script `database/timescale/maintenance/archive_telemetry_by_tenant.sh`
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).

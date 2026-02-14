@@ -21,6 +21,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+__pycache__/
+*.pyc
 
 # Node (para quando criar o Next.js)
 node_modules/
