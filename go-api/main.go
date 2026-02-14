@@ -56,6 +56,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db.Postgres, db.Redis, cfg)
 	deviceHandler := handlers.NewDeviceHandler(db.Postgres, db.Redis, cfg)
 	telemetryHandler := handlers.NewTelemetryHandler(db.Postgres, db.Timescale, db.Redis, cfg)
+	tenantAdminHandler := handlers.NewTenantAdminHandler(db.Postgres, db.Timescale, cfg)
 
 	// Setup routes
 	mux := http.NewServeMux()
@@ -189,6 +190,31 @@ func main() {
 			jwtMiddleware.Authenticate(
 				middleware.RequirePermission("telemetry:read")(
 					http.HandlerFunc(telemetryHandler.GetActiveSlots),
+				),
+			),
+		))
+
+		// Tenant quotas/usage (super admin only)
+		mux.Handle(fmt.Sprintf("%s/tenants/{tenant_id}/quotas", prefix), middleware.RequireMethods(http.MethodGet, http.MethodPatch)(
+			jwtMiddleware.Authenticate(
+				middleware.RequirePermission("system:admin")(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						switch r.Method {
+						case http.MethodGet:
+							tenantAdminHandler.GetTenantQuotas(w, r)
+						case http.MethodPatch:
+							tenantAdminHandler.PatchTenantQuotas(w, r)
+						default:
+							utils.WriteError(w, http.StatusMethodNotAllowed, "Method not allowed")
+						}
+					}),
+				),
+			),
+		))
+		mux.Handle(fmt.Sprintf("%s/tenants/{tenant_id}/usage", prefix), middleware.RequireMethods(http.MethodGet)(
+			jwtMiddleware.Authenticate(
+				middleware.RequirePermission("system:admin")(
+					http.HandlerFunc(tenantAdminHandler.GetTenantUsage),
 				),
 			),
 		))

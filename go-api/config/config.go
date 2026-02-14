@@ -57,6 +57,10 @@ type Config struct {
 	// MQTT broker advertised to clients
 	MQTTBrokerHost string
 	MQTTBrokerPort string
+
+	// Telegram notifications (quota events)
+	TelegramBotToken string
+	TelegramChatID   string
 }
 
 func Load() *Config {
@@ -100,6 +104,8 @@ func Load() *Config {
 		ShutdownTimeoutSecs: getEnvInt64("SHUTDOWN_TIMEOUT_SECS", 30),
 		MQTTBrokerHost:      getEnv("MQTT_BROKER_HOST", "localhost"),
 		MQTTBrokerPort:      getEnv("MQTT_BROKER_PORT", "1883"),
+		TelegramBotToken:    getEnv("TELEGRAM_BOT_TOKEN", ""),
+		TelegramChatID:      getEnv("TELEGRAM_CHAT_ID", ""),
 	}
 }
 

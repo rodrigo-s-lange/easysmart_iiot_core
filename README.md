@@ -39,8 +39,13 @@ O serviço `telegram_ops_bot` oferece comandos operacionais no Telegram:
 - `/logs api|emqx|postgres|timescale|redis`
 
 Também envia notificações automáticas para:
-- novo usuário cadastrado;
-- novo dispositivo cadastrado.
+- novo usuário cadastrado (inclui `email` e `role`);
+- novo dispositivo cadastrado (inclui `tenant_id`, `user_email`, `device_id`, `device_label`).
+
+Cada envio automático para Telegram também gera trilha em `audit_log` com:
+- `event_type=ops.user_registered_notified` ou `ops.device_created_notified`
+- `action=telegram_notify`
+- `result=success|failed|skipped`
 
 Variável obrigatória no `.env`:
 - `EMQX_WEBHOOK_API_KEY=<chave-longa-e-aleatoria>`
@@ -122,6 +127,7 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 - Rate limit de auth resiliente a Redis indisponível (sem panic)
 - Validação defensiva de API key curta (sem panic)
 - Seletores de leitura de telemetria sem ambiguidade: aceitar **apenas um** entre `device_id` e `device_label`
+- Quotas por tenant aplicadas no backend (devices, msg/min por device e storage), com bloqueio duro para starter/pro.
 
 ## Endpoints principais
 - Auth:
@@ -140,6 +146,10 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
   - `POST /api/v1/telemetry`
   - `GET /api/v1/telemetry/latest`
   - `GET /api/v1/telemetry/slots`
+- Tenants (super_admin):
+  - `GET /api/v1/tenants/{tenant_id}/quotas`
+  - `PATCH /api/v1/tenants/{tenant_id}/quotas`
+  - `GET /api/v1/tenants/{tenant_id}/usage`
 
 Compatibilidade temporária:
 - Prefixo legado `/api/*` ainda disponível durante transição para `/api/v1/*`.
@@ -174,3 +184,4 @@ Configuração detalhada:
 - Runbooks operacionais: `docs/RUNBOOKS.md`
 - Validação mínima para produção/auditoria: `docs/PRODUCTION_VALIDATION.md`
 - Resiliência de dados (backup/restore, retenção, RPO/RTO): `docs/DATA_RESILIENCE.md`
+- Billing e quotas por tenant: `docs/BILLING_QUOTAS.md`

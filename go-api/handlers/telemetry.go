@@ -116,6 +116,18 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allowed, _, err := enforceTelemetryQuota(context.Background(), h.Postgres, h.Timescale, h.Redis, h.Config, tenantID, deviceID)
+	if err != nil {
+		metrics.TelemetryRejected("quota_check_error")
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if !allowed {
+		metrics.TelemetryRejected("quota_exceeded")
+		utils.WriteErrorWithCode(w, http.StatusTooManyRequests, "quota_exceeded", "Tenant quota exceeded")
+		return
+	}
+
 	// Parse timestamp
 	ts, err := parseTimestamp(req.Timestamp)
 	if err != nil {

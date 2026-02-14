@@ -183,6 +183,64 @@ def get_counters(cur):
     }
 
 
+def get_new_users(cur, since_ts):
+    cur.execute(
+        """
+        SELECT user_id, tenant_id, email, role, created_at
+        FROM users
+        WHERE created_at > %s
+        ORDER BY created_at ASC
+        LIMIT 20
+        """,
+        (since_ts,),
+    )
+    return cur.fetchall()
+
+
+def get_new_devices(cur, since_ts):
+    cur.execute(
+        """
+        SELECT device_id, tenant_id, device_label, status, created_at
+        FROM devices
+        WHERE created_at > %s
+        ORDER BY created_at ASC
+        LIMIT 20
+        """,
+        (since_ts,),
+    )
+    return cur.fetchall()
+
+
+def fmt_ts(ts):
+    try:
+        return ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    except Exception:
+        return str(ts)
+
+
+def write_notification_audit(tenant_id, user_id, event_type, metadata):
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO audit_log (
+                        tenant_id, user_id, event_type, event_category, severity,
+                        actor_type, action, result, resource_type, metadata, timestamp
+                    )
+                    VALUES (
+                        %s, %s, %s, 'operations', 'info',
+                        'system', 'telegram_notify', 'success', 'telegram', %s::jsonb, NOW()
+                    )
+                    """,
+                    (tenant_id, user_id, event_type, json.dumps(metadata)),
+                )
+                conn.commit()
+    except Exception:
+        # Never break bot flow for audit persistence errors.
+        return
+
+
 def watch_new_entities(default_chat_id: str, state: dict):
     try:
         with get_db_conn() as conn:
@@ -197,11 +255,56 @@ def watch_new_entities(default_chat_id: str, state: dict):
 
     if cur_state["users_count"] > state["users_count"]:
         diff = cur_state["users_count"] - state["users_count"]
-        send_message(default_chat_id, f"Novo usuário cadastrado: +{diff} (total={cur_state['users_count']})")
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                rows = get_new_users(cur, state["users_max"])
+
+        lines = [f"Novo usuário cadastrado: +{diff} (total={cur_state['users_count']})"]
+        for row in rows[:5]:
+            user_id, tenant_id, email, role, created_at = row
+            lines.append(f"- {email} ({role}) id={str(user_id)[:8]}... at={fmt_ts(created_at)}")
+            write_notification_audit(
+                tenant_id,
+                user_id,
+                "ops.user_created_notified",
+                {
+                    "chat_id": default_chat_id,
+                    "email": email,
+                    "role": role,
+                    "created_at": fmt_ts(created_at),
+                },
+            )
+        if len(rows) > 5:
+            lines.append(f"- ... +{len(rows)-5} usuários")
+        send_message(default_chat_id, "\n".join(lines))
 
     if cur_state["devices_count"] > state["devices_count"]:
         diff = cur_state["devices_count"] - state["devices_count"]
-        send_message(default_chat_id, f"Novo dispositivo cadastrado: +{diff} (total={cur_state['devices_count']})")
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                rows = get_new_devices(cur, state["devices_max"])
+
+        lines = [f"Novo dispositivo cadastrado: +{diff} (total={cur_state['devices_count']})"]
+        for row in rows[:5]:
+            device_id, tenant_id, device_label, status, created_at = row
+            lines.append(
+                f"- label={device_label} id={str(device_id)[:8]}... tenant={str(tenant_id)[:8]}... status={status} at={fmt_ts(created_at)}"
+            )
+            write_notification_audit(
+                tenant_id,
+                None,
+                "ops.device_created_notified",
+                {
+                    "chat_id": default_chat_id,
+                    "device_id": str(device_id),
+                    "device_label": device_label,
+                    "status": status,
+                    "created_at": fmt_ts(created_at),
+                },
+            )
+        if len(rows) > 5:
+            lines.append(f"- ... +{len(rows)-5} dispositivos")
+        send_message(default_chat_id, "\n".join(lines))
 
     state.update(cur_state)
 

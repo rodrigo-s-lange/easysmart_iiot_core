@@ -147,6 +147,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best effort operational notification (Telegram + audit).
+	notifyUserRegistered(h.DB, h.Config, userID, tenantIDStrOrEmpty(tenantID), req.Email, role)
+
 	// Get permissions
 	permissions, err := h.getPermissions(role)
 	if err != nil {
@@ -203,6 +206,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Status:   "active",
 		},
 	})
+}
+
+func tenantIDStrOrEmpty(tenantID *string) string {
+	if tenantID == nil {
+		return ""
+	}
+	return *tenantID
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {

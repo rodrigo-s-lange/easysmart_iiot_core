@@ -47,6 +47,7 @@ All notable changes to this project will be documented in this file.
 - SLO/SLI documentation by service: `docs/SLO_SLI.md`.
 - Incident runbooks: `docs/RUNBOOKS.md`.
 - Telegram Ops Bot (`telegram_ops_bot`) for operational chat commands and event notifications (new user/device).
+- Operational Telegram notifications from backend for `auth/register` and `devices/provision|claim`, including user email and device identifiers.
 - Data resilience automation:
   - `scripts/ops/run_backup_daily.sh`
   - `scripts/ops/run_restore_drill_weekly.sh`
@@ -55,6 +56,11 @@ All notable changes to this project will be documented in this file.
 - Tenant telemetry retention base:
   - migration `database/timescale/migrations/003_tenant_retention_policy.sql`
   - archive/prune script `database/timescale/maintenance/archive_telemetry_by_tenant.sh`
+- Billing/quota foundations:
+  - migration `database/migrations/006_tenant_billing_and_quotas.sql`
+  - super-admin endpoints for quotas/usage (`/api/v1/tenants/{tenant_id}/quotas`, `/api/v1/tenants/{tenant_id}/usage`)
+  - `docs/BILLING_QUOTAS.md`
+  - bootstrap helper SQL `database/maintenance/promote_super_admin.sql`
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
@@ -80,6 +86,8 @@ All notable changes to this project will be documented in this file.
 - OpenAPI paths updated to `/api/v1/*` and error schema aligned with runtime envelope.
 - Prometheus/Blackbox observability expanded with TCP probes (Postgres, TimescaleDB, EMQX) and new SLO-oriented alerts (latency/error-rate/ingestion-failure).
 - Alertmanager routing updated for Telegram on-call (`critical` only), with optional fallback webhook and maintenance mute window (03:00-03:30 UTC).
+- Backend now enforces tenant quotas for device provisioning/claim and telemetry ingestion, with audit trail + Telegram notification on hard blocks.
+- Automatic Telegram notifications now persist operational audit events (`ops.user_registered_notified`, `ops.device_created_notified`) with delivery result (`success|failed|skipped`).
 
 ### Docs
 - Documented CORS behavior and configuration.

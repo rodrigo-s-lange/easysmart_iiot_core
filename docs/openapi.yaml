@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: IIoT Platform API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     API do backend da plataforma IIoT.
     Esta especificacao documenta endpoints atuais (auth, devices, telemetry).
@@ -13,6 +13,7 @@ tags:
   - name: Auth
   - name: Devices
   - name: Telemetry
+  - name: Tenants
 
 components:
   securitySchemes:
@@ -177,6 +178,34 @@ components:
         slots:
           type: array
           items: { type: integer }
+    TenantQuotas:
+      type: object
+      properties:
+        tenant_id: { type: string, format: uuid }
+        plan_type: { type: string, enum: [starter, pro, enterprise] }
+        billing_cycle: { type: string, enum: [monthly, annual] }
+        quota_devices: { type: integer, description: "0 means unlimited" }
+        quota_msgs_per_min: { type: integer }
+        quota_storage_mb: { type: integer }
+        allow_overage: { type: boolean }
+    TenantQuotaPatchRequest:
+      type: object
+      properties:
+        plan_type: { type: string, enum: [starter, pro, enterprise] }
+        billing_cycle: { type: string, enum: [monthly, annual] }
+        quota_devices: { type: integer, minimum: 0 }
+        quota_msgs_per_min: { type: integer, minimum: 0 }
+        quota_storage_mb: { type: integer, minimum: 0 }
+        allow_overage: { type: boolean }
+    TenantUsage:
+      type: object
+      properties:
+        tenant_id: { type: string, format: uuid }
+        messages_last_60min: { type: integer }
+        devices_total: { type: integer }
+        storage_mb_estimated: { type: number, format: float }
+        plan_type: { type: string, enum: [starter, pro, enterprise] }
+        billing_cycle: { type: string, enum: [monthly, annual] }
 
 paths:
   /health:
@@ -540,7 +569,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "429":
-          description: Rate limit exceeded (device or slot)
+          description: Rate limit exceeded or tenant quota exceeded
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -667,6 +696,108 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "503":
           description: Cache unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/tenants/{tenant_id}/quotas:
+    get:
+      tags: [Tenants]
+      summary: Get tenant quotas (super admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantQuotas" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Requires system:admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      tags: [Tenants]
+      summary: Update tenant quotas/plan/billing cycle (super admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TenantQuotaPatchRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantQuotas" }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Requires system:admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/tenants/{tenant_id}/usage:
+    get:
+      tags: [Tenants]
+      summary: Get tenant usage snapshot (super admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantUsage" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Requires system:admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Tenant not found
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

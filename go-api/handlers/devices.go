@@ -68,6 +68,21 @@ func (h *DeviceHandler) ProvisionDevice(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	userEmail := ""
+	if claims, ok := r.Context().Value("jwt_claims").(*models.JWTClaims); ok && claims != nil {
+		userEmail = claims.Email
+	}
+
+	allowed, err := enforceDeviceQuota(context.Background(), h.DB, h.Config, tenantID, userID, userEmail)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	if !allowed {
+		utils.WriteErrorWithCode(w, http.StatusTooManyRequests, "quota_exceeded", "Device quota exceeded for tenant")
+		return
+	}
+
 	deviceSecret, err := generateDeviceSecret()
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
@@ -122,6 +137,9 @@ func (h *DeviceHandler) ProvisionDevice(w http.ResponseWriter, r *http.Request) 
 		DeviceSecret: deviceSecret,
 		Broker:       fmt.Sprintf("%s:%s", h.Config.MQTTBrokerHost, h.Config.MQTTBrokerPort),
 	})
+
+	// Best effort operational notification (Telegram + audit).
+	notifyDeviceCreated(h.DB, h.Config, userID, tenantID, userEmail, deviceID, req.DeviceLabel, "provision")
 }
 
 // ClaimDevice handles device claim requests (device_id + claim_code)
@@ -144,6 +162,20 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 
 	tenantID := r.Context().Value("tenant_id").(string)
 	userID := r.Context().Value("user_id").(string)
+	userEmail := ""
+	if claims, ok := r.Context().Value("jwt_claims").(*models.JWTClaims); ok && claims != nil {
+		userEmail = claims.Email
+	}
+
+	allowed, err := enforceDeviceQuota(context.Background(), h.DB, h.Config, tenantID, userID, userEmail)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	if !allowed {
+		utils.WriteErrorWithCode(w, http.StatusTooManyRequests, "quota_exceeded", "Device quota exceeded for tenant")
+		return
+	}
 
 	ctx := context.Background()
 	tx, err := h.DB.Begin(ctx)
@@ -155,12 +187,13 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 
 	var status string
 	var claimCodeHash sql.NullString
+	var deviceLabel string
 	err = tx.QueryRow(ctx, `
-		SELECT status, claim_code_hash
+		SELECT status, claim_code_hash, device_label
 		FROM devices
 		WHERE device_id = $1::uuid
 		FOR UPDATE
-	`, req.DeviceID).Scan(&status, &claimCodeHash)
+	`, req.DeviceID).Scan(&status, &claimCodeHash, &deviceLabel)
 	if err != nil {
 		utils.WriteError(w, http.StatusNotFound, "Device not found")
 		return
@@ -228,6 +261,9 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 		DeviceID: req.DeviceID,
 		Message:  "Device claimed successfully. Device can now retrieve secret.",
 	})
+
+	// Best effort operational notification (Telegram + audit).
+	notifyDeviceCreated(h.DB, h.Config, userID, tenantID, userEmail, req.DeviceID, deviceLabel, "claim")
 }
 
 // Bootstrap handles device bootstrap polling (HMAC + timestamp)

@@ -84,8 +84,13 @@ Comandos no chat permitido:
 - `/logs api|emqx|postgres|timescale|redis`
 
 Notificações automáticas:
-- novo usuário cadastrado;
-- novo dispositivo cadastrado.
+- novo usuário cadastrado (com `email` e `role`);
+- novo dispositivo cadastrado (com `tenant_id`, `user_email`, `device_id`, `device_label`).
+
+Auditoria operacional:
+- cada envio automático gera evento em `audit_log`;
+- `event_type`: `ops.user_registered_notified` ou `ops.device_created_notified`;
+- `action=telegram_notify`, `result=success|failed|skipped`.
 
 ## Dashboards Grafana
 Provisionados automaticamente:
