@@ -57,7 +57,7 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deviceToken, slot, err := parseTopic(req.Topic)
+	topicTenantID, deviceToken, slot, err := parseTopic(req.Topic)
 	if err != nil {
 		metrics.TelemetryRejected("invalid_topic")
 		utils.WriteError(w, http.StatusBadRequest, err.Error())
@@ -97,6 +97,11 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	if tenantID == "" {
 		metrics.TelemetryRejected("tenant_missing")
 		utils.WriteError(w, http.StatusNotFound, "Device missing tenant")
+		return
+	}
+	if topicTenantID != tenantID {
+		metrics.TelemetryRejected("tenant_mismatch")
+		utils.WriteError(w, http.StatusForbidden, "Topic tenant does not match device tenant")
 		return
 	}
 
@@ -173,16 +178,21 @@ func (h *TelemetryHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 
 // GetLatest handles latest telemetry retrieval
 func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := r.Context().Value("tenant_id").(string)
+	if !ok || tenantID == "" {
+		utils.WriteError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	deviceIDParam := r.URL.Query().Get("device_id")
 	deviceLabel := r.URL.Query().Get("device_label")
-	deviceToken := r.URL.Query().Get("token") // legacy
 	slotStr := r.URL.Query().Get("slot")
 
 	if slotStr == "" {
 		utils.WriteError(w, http.StatusBadRequest, "slot is required")
 		return
 	}
-	if deviceIDParam == "" && deviceLabel == "" && deviceToken == "" {
+	if deviceIDParam == "" && deviceLabel == "" {
 		utils.WriteError(w, http.StatusBadRequest, "device_id or device_label is required")
 		return
 	}
@@ -198,17 +208,16 @@ func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case deviceIDParam != "":
 		err = h.Postgres.QueryRow(context.Background(), `
-			SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
-		`, deviceIDParam).Scan(&deviceID)
+			SELECT device_id
+			FROM devices
+			WHERE device_id = $1::uuid AND tenant_id = $2::uuid AND status IN ('active', 'claimed')
+		`, deviceIDParam, tenantID).Scan(&deviceID)
 	case deviceLabel != "":
 		err = h.Postgres.QueryRow(context.Background(), `
-			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
-		`, deviceLabel).Scan(&deviceID)
-	default:
-		// legacy fallback (token previously used)
-		err = h.Postgres.QueryRow(context.Background(), `
-			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
-		`, deviceToken).Scan(&deviceID)
+			SELECT device_id
+			FROM devices
+			WHERE device_label = $1 AND tenant_id = $2::uuid AND status IN ('active', 'claimed')
+		`, deviceLabel, tenantID).Scan(&deviceID)
 	}
 
 	if err != nil {
@@ -240,11 +249,16 @@ func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 
 // GetActiveSlots returns slots that have cached latest values (Redis)
 func (h *TelemetryHandler) GetActiveSlots(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := r.Context().Value("tenant_id").(string)
+	if !ok || tenantID == "" {
+		utils.WriteError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	deviceIDParam := r.URL.Query().Get("device_id")
 	deviceLabel := r.URL.Query().Get("device_label")
-	deviceToken := r.URL.Query().Get("token") // legacy
 
-	if deviceIDParam == "" && deviceLabel == "" && deviceToken == "" {
+	if deviceIDParam == "" && deviceLabel == "" {
 		utils.WriteError(w, http.StatusBadRequest, "device_id or device_label is required")
 		return
 	}
@@ -255,16 +269,16 @@ func (h *TelemetryHandler) GetActiveSlots(w http.ResponseWriter, r *http.Request
 	switch {
 	case deviceIDParam != "":
 		err = h.Postgres.QueryRow(context.Background(), `
-			SELECT device_id FROM devices WHERE device_id = $1::uuid AND status IN ('active', 'claimed')
-		`, deviceIDParam).Scan(&deviceID)
+			SELECT device_id
+			FROM devices
+			WHERE device_id = $1::uuid AND tenant_id = $2::uuid AND status IN ('active', 'claimed')
+		`, deviceIDParam, tenantID).Scan(&deviceID)
 	case deviceLabel != "":
 		err = h.Postgres.QueryRow(context.Background(), `
-			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
-		`, deviceLabel).Scan(&deviceID)
-	default:
-		err = h.Postgres.QueryRow(context.Background(), `
-			SELECT device_id FROM devices WHERE device_label = $1 AND status IN ('active', 'claimed')
-		`, deviceToken).Scan(&deviceID)
+			SELECT device_id
+			FROM devices
+			WHERE device_label = $1 AND tenant_id = $2::uuid AND status IN ('active', 'claimed')
+		`, deviceLabel, tenantID).Scan(&deviceID)
 	}
 	if err != nil {
 		utils.WriteError(w, http.StatusNotFound, "Device not found or inactive")
@@ -316,18 +330,23 @@ func (h *TelemetryHandler) GetActiveSlots(w http.ResponseWriter, r *http.Request
 }
 
 // Helper functions
-func parseTopic(topic string) (string, int, error) {
+func parseTopic(topic string) (string, string, int, error) {
 	// tenants/{tenant_id}/devices/{device_id}/telemetry/slot/{N}
 	parts := strings.Split(topic, "/")
-	if len(parts) < 7 {
-		return "", 0, errors.New("invalid topic format")
+	if len(parts) != 7 {
+		return "", "", 0, errors.New("invalid topic format")
 	}
+	if parts[0] != "tenants" || parts[2] != "devices" || parts[4] != "telemetry" || parts[5] != "slot" {
+		return "", "", 0, errors.New("invalid topic format")
+	}
+
+	tenantID := parts[1]
 	deviceID := parts[3]
 	slot, err := strconv.Atoi(parts[6])
-	if deviceID == "" || err != nil {
-		return "", 0, errors.New("invalid topic format")
+	if tenantID == "" || deviceID == "" || err != nil {
+		return "", "", 0, errors.New("invalid topic format")
 	}
-	return deviceID, slot, nil
+	return tenantID, deviceID, slot, nil
 }
 
 func parseTimestamp(ts string) (time.Time, error) {

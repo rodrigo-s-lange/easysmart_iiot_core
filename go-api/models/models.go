@@ -100,6 +100,20 @@ type ClaimDeviceResponse struct {
 	Message  string `json:"message"`
 }
 
+// ProvisionDeviceRequest represents authenticated direct provisioning.
+type ProvisionDeviceRequest struct {
+	DeviceLabel string `json:"device_label" validate:"omitempty,max=50"`
+}
+
+// ProvisionDeviceResponse returns MQTT credentials for a freshly provisioned device.
+type ProvisionDeviceResponse struct {
+	TenantID     string `json:"tenant_id"`
+	DeviceID     string `json:"device_id"`
+	DeviceLabel  string `json:"device_label"`
+	DeviceSecret string `json:"device_secret"`
+	Broker       string `json:"broker"`
+}
+
 // BootstrapResponse represents a device bootstrap response
 type BootstrapResponse struct {
 	Status       string `json:"status"`

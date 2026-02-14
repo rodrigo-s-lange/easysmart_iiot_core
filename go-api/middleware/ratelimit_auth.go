@@ -31,6 +31,11 @@ func NewRateLimitAuth(redisClient *redis.Client, maxAttempts, windowSecs int64) 
 
 func (rl *RateLimitAuth) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rl.Redis == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Get client IP (handle X-Forwarded-For for proxies)
 		clientIP := r.RemoteAddr
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {

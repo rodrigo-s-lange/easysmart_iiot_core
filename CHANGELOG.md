@@ -23,6 +23,9 @@ All notable changes to this project will be documented in this file.
 - Structured logging (slog).
 - Graceful shutdown (configurable timeout).
 - Prometheus metrics endpoint (`/metrics`) with basic counters.
+- Direct provisioning endpoint for logged-in users: `POST /api/devices/provision`.
+- MQTT broker config exposed for provisioning response: `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`.
+- Migration runner script with tracking table support: `database/migrate.sh`.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
@@ -32,10 +35,19 @@ All notable changes to this project will be documented in this file.
 - Consolidated multi-tenant tables: `users_v2`/`devices_v2` renamed to `users`/`devices` with RLS enabled. Legacy tables preserved as `users_legacy`/`devices_legacy`.
 - TimescaleDB telemetry agora inclui `tenant_id` com RLS (isolamento por tenant).
 - Removed EMQX listener rate limiting (managed in Go API instead).
+- `/api/devices/secret` no longer reissues secret when cache key is missing; retrieval is strictly one-time.
+- Telemetry read endpoints (`/api/telemetry/latest`, `/api/telemetry/slots`) now require JWT + `telemetry:read` and tenant scoping.
+- Telemetry webhook now validates tenant in MQTT topic against device tenant.
+- Auth rate limiter now handles Redis=nil safely.
+- API key middleware now rejects short keys safely (no panic).
+- Register flow now serializes first-user bootstrap via advisory lock (avoids multi-super-admin race).
+- Normalized migration ordering (`003/004/005`) and moved old single-tenant schema to `database/migrations/legacy/`.
 
 ### Docs
 - Documented CORS behavior and configuration.
 - Added short-term implementation roadmap (observability, operational security, provisioning tests/reset).
+- OpenAPI updated with direct provisioning endpoint and telemetry read auth requirements.
+- README rewritten in lighter format and aligned with current provisioning/security behavior.
 
 ### Removed
 - Express API e serviço `nextjs` do compose (Go API agora é o único ingest).
@@ -49,4 +61,3 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - EMQX auth/ACL queries wired to PostgreSQL.
 - `docker-compose.yml` now loads `.env` via `env_file`.
-

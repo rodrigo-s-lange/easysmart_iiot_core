@@ -113,6 +113,11 @@ services:
       - RATE_LIMIT_SLOT_PER_MIN=12
       - RATE_LIMIT_FAIL_OPEN=true
       - CACHE_TTL_SECONDS=0
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-192.168.0.99}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://192.168.0.99:3000
+      - CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
+      - CORS_ALLOWED_HEADERS=Content-Type,Authorization,X-Request-ID
     networks:
       - iiot_network
     depends_on:
@@ -143,7 +148,8 @@ services:
 
 networks:
   iiot_network:
-    driver: bridge
+    name: iiot_platform_iiot_network
+    external: true
 
 volumes:
   postgres_data:

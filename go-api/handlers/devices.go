@@ -32,6 +32,98 @@ func NewDeviceHandler(db *pgxpool.Pool, rdb *redis.Client, cfg *config.Config) *
 	return &DeviceHandler{DB: db, Redis: rdb, Config: cfg}
 }
 
+// ProvisionDevice creates a claimed device and returns MQTT credentials.
+func (h *DeviceHandler) ProvisionDevice(w http.ResponseWriter, r *http.Request) {
+	var req models.ProvisionDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if err := utils.ValidateStruct(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, utils.ValidationErrorMessage(err))
+		return
+	}
+
+	req.DeviceLabel = strings.TrimSpace(req.DeviceLabel)
+	if req.DeviceLabel == "" {
+		randomLabel, err := generateDeviceSecret()
+		if err != nil {
+			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+			return
+		}
+		req.DeviceLabel = randomLabel
+		if len(req.DeviceLabel) > 50 {
+			req.DeviceLabel = req.DeviceLabel[:50]
+		}
+	}
+
+	tenantID, ok := r.Context().Value("tenant_id").(string)
+	if !ok || tenantID == "" {
+		utils.WriteError(w, http.StatusUnauthorized, "Missing tenant context")
+		return
+	}
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		utils.WriteError(w, http.StatusUnauthorized, "Missing user context")
+		return
+	}
+
+	deviceSecret, err := generateDeviceSecret()
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	secretHash, err := bcrypt.GenerateFromPassword([]byte(deviceSecret), 12)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	var deviceID string
+	err = h.DB.QueryRow(context.Background(), `
+		INSERT INTO devices (
+			device_id,
+			tenant_id,
+			owner_user_id,
+			device_label,
+			secret_hash,
+			status,
+			claimed_at,
+			created_at,
+			updated_at
+		)
+		VALUES (
+			uuid_generate_v4(),
+			$1::uuid,
+			$2::uuid,
+			$3,
+			$4,
+			'claimed',
+			NOW(),
+			NOW(),
+			NOW()
+		)
+		RETURNING device_id::text
+	`, tenantID, userID, req.DeviceLabel, string(secretHash)).Scan(&deviceID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "devices_device_label_key") {
+			utils.WriteError(w, http.StatusConflict, "device_label already exists")
+			return
+		}
+		log.Printf("provision_device insert failed: %v", err)
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusCreated, models.ProvisionDeviceResponse{
+		TenantID:     tenantID,
+		DeviceID:     deviceID,
+		DeviceLabel:  req.DeviceLabel,
+		DeviceSecret: deviceSecret,
+		Broker:       fmt.Sprintf("%s:%s", h.Config.MQTTBrokerHost, h.Config.MQTTBrokerPort),
+	})
+}
+
 // ClaimDevice handles device claim requests (device_id + claim_code)
 func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 	var req models.ClaimDeviceRequest
@@ -221,19 +313,24 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure device is claimed
+	// Ensure device is claimed and secret was not already delivered.
 	var status string
+	var secretDeliveredAt sql.NullTime
 	err := h.DB.QueryRow(context.Background(), `
-		SELECT status
+		SELECT status, secret_delivered_at
 		FROM devices
 		WHERE device_id = $1::uuid
-	`, req.DeviceID).Scan(&status)
+	`, req.DeviceID).Scan(&status, &secretDeliveredAt)
 	if err != nil {
 		utils.WriteError(w, http.StatusNotFound, "Device not found")
 		return
 	}
 	if status != "claimed" {
 		utils.WriteError(w, http.StatusConflict, "Device is not ready for secret retrieval")
+		return
+	}
+	if secretDeliveredAt.Valid {
+		utils.WriteError(w, http.StatusConflict, "Device secret already delivered")
 		return
 	}
 
@@ -247,32 +344,18 @@ func (h *DeviceHandler) GetSecret(w http.ResponseWriter, r *http.Request) {
 	// Get and delete atomically
 	secret, err := h.Redis.GetDel(context.Background(), redisKey).Result()
 	if err != nil || secret == "" {
-		// Re-issue new secret if cache is missing
-		secret, err = generateDeviceSecret()
-		if err != nil {
-			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
-			return
-		}
-		secretHash, err := bcrypt.GenerateFromPassword([]byte(secret), 12)
-		if err != nil {
-			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
-			return
-		}
-		_, err = h.DB.Exec(context.Background(), `
-			UPDATE devices
-			SET secret_hash = $1, secret_delivered_at = NOW()
-			WHERE device_id = $2::uuid
-		`, string(secretHash), req.DeviceID)
-		if err != nil {
-			utils.WriteError(w, http.StatusInternalServerError, "Internal error")
-			return
-		}
-	} else {
-		h.DB.Exec(context.Background(), `
-			UPDATE devices
-			SET secret_delivered_at = NOW()
-			WHERE device_id = $1::uuid
-		`, req.DeviceID)
+		utils.WriteError(w, http.StatusConflict, "Device secret unavailable. Reset and claim again.")
+		return
+	}
+
+	_, err = h.DB.Exec(context.Background(), `
+		UPDATE devices
+		SET secret_delivered_at = NOW()
+		WHERE device_id = $1::uuid AND secret_delivered_at IS NULL
+	`, req.DeviceID)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
 	}
 
 	expiresAt := time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339)

@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"iiot-go-api/config"
 	"iiot-go-api/models"
 	"iiot-go-api/utils"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -68,6 +68,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
+
+	// Serialize first-user bootstrap to avoid race creating multiple super_admin accounts.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1001)"); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
 
 	// Check if email already exists
 	var exists bool

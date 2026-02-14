@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"iiot-go-api/utils"
 	"net/http"
 	"strings"
@@ -63,6 +64,10 @@ func (m *APIKeyMiddleware) Authenticate(next http.Handler) http.Handler {
 }
 
 func (m *APIKeyMiddleware) validateAPIKey(ctx context.Context, key string) (*APIKeyData, error) {
+	if len(key) < 8 {
+		return nil, errors.New("api key too short")
+	}
+
 	// 1. Redis cache (hot path)
 	if m.Redis != nil {
 		cacheKey := "apikey:valid:" + key

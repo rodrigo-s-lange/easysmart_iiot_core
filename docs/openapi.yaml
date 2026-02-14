@@ -83,6 +83,18 @@ components:
       properties:
         device_id: { type: string, format: uuid }
         message: { type: string }
+    ProvisionRequest:
+      type: object
+      properties:
+        device_label: { type: string, maxLength: 50, example: "esp32-s3-linha-a-01" }
+    ProvisionResponse:
+      type: object
+      properties:
+        tenant_id: { type: string, format: uuid }
+        device_id: { type: string, format: uuid }
+        device_label: { type: string }
+        device_secret: { type: string }
+        broker: { type: string, example: "mqtt.easysmart.com.br:1883" }
     BootstrapRequest:
       type: object
       required: [device_id, timestamp, signature]
@@ -344,6 +356,48 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /api/devices/provision:
+    post:
+      tags: [Devices]
+      summary: Direct device provisioning (authenticated user)
+      description: |
+        Creates a new claimed device for the current tenant and returns MQTT credentials.
+        If `device_label` is omitted, backend generates one automatically.
+        Requires JWT with `devices:provision` permission.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProvisionRequest" }
+      responses:
+        "201":
+          description: Device created and credentials issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionResponse" }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Missing devices:provision permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: device_label already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /api/devices/bootstrap:
     post:
       tags: [Devices]
@@ -378,8 +432,8 @@ paths:
       tags: [Devices]
       summary: Device secret retrieval (HMAC, one-time)
       description: |
-        Returns device_secret for MQTT authentication. If cached secret expired, re-generates and updates DB.
-        Device must be in 'claimed' status.
+        Returns device_secret for MQTT authentication only once.
+        Device must be in 'claimed' status and secret must still be available in cache.
       requestBody:
         required: true
         content:
@@ -402,7 +456,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Device not ready for secret retrieval (not in claimed status)
+          description: Device not ready, secret already delivered, or secret unavailable
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -499,8 +553,10 @@ paths:
       tags: [Telemetry]
       summary: Latest telemetry from Redis cache
       description: |
-        Returns the most recent cached value for a device/slot. If no cache exists, returns empty object.
-        Accepts device_id or device_label (one is required).
+        Returns the most recent cached value for a device/slot scoped to the authenticated tenant.
+        Requires JWT with `telemetry:read`.
+      security:
+        - bearerAuth: []
       parameters:
         - in: query
           name: device_id
@@ -525,6 +581,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Missing telemetry:read permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Device not found or inactive
           content:
@@ -541,8 +607,10 @@ paths:
       tags: [Telemetry]
       summary: Active slots from Redis cache
       description: |
-        Returns sorted list of slot numbers that have cached latest values.
-        Accepts device_id or device_label (one is required).
+        Returns sorted list of slot numbers that have cached latest values,
+        scoped to the authenticated tenant. Requires JWT with `telemetry:read`.
+      security:
+        - bearerAuth: []
       parameters:
         - in: query
           name: device_id
@@ -563,6 +631,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Missing telemetry:read permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Device not found or inactive
           content:
@@ -573,4 +651,3 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
-

@@ -546,8 +546,12 @@ docker exec iiot_redis redis-cli --no-auth-warning \
 ```
 /home/rodrigo/easysmart_iiot_core/
 ├── database/migrations/
-│   ├── 001_initial_schema.sql
-│   └── 002_production_multi_tenant.sql
+│   ├── 002_production_multi_tenant.sql
+│   ├── 003_device_provisioning_claim_code.sql
+│   ├── 004_add_email_verified.sql
+│   ├── 005_rename_v2_tables.sql
+│   └── legacy/001_initial_schema.sql
+├── database/migrate.sh
 ├── go-api/
 │   ├── main.go
 │   ├── config/config.go
