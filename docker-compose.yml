@@ -168,6 +168,78 @@ services:
       emqx:
         condition: service_started
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: iiot_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - iiot_network
+    depends_on:
+      go_api:
+        condition: service_healthy
+      blackbox_exporter:
+        condition: service_started
+
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: iiot_blackbox_exporter
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+    volumes:
+      - ./monitoring/blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - iiot_network
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: iiot_alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    env_file:
+      - .env
+    environment:
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    volumes:
+      - ./monitoring/alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - iiot_network
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: iiot_grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    env_file:
+      - .env
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - iiot_network
+    depends_on:
+      - prometheus
+
 networks:
   iiot_network:
     name: iiot_platform_iiot_network
@@ -179,3 +251,6 @@ volumes:
   emqx_data:
   emqx_log:
   timescale_data:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

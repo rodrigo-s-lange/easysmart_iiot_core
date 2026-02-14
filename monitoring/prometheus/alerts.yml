@@ -1,0 +1,29 @@
+groups:
+  - name: iiot_core_critical
+    rules:
+      - alert: GoApiDown
+        expr: up{job="go_api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Go API indisponível"
+          description: "Prometheus não consegue coletar métricas de go_api:3001 por mais de 2 minutos."
+
+      - alert: GoApiReadinessFailing
+        expr: probe_success{job="go_api_ready"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Readiness da API falhando"
+          description: "Probe de /health/ready está falhando por mais de 2 minutos (dependências indisponíveis)."
+
+      - alert: GoApi5xxSpike
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike de erros 5xx na API"
+          description: "Taxa agregada de respostas 5xx acima de 0.1 req/s por 5 minutos."

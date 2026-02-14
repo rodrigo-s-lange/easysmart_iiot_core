@@ -29,6 +29,9 @@ All notable changes to this project will be documented in this file.
 - Basic Go test suite for auth/middleware/devices/telemetry utility flows.
 - EMQX bootstrap reconciler service (`emqx_bootstrap`) to auto-restore webhook connector/action/rule after restarts.
 - New env var `EMQX_WEBHOOK_API_KEY` in `.env.example` for telemetry webhook authentication.
+- Observability stack in Docker Compose: Prometheus, Blackbox Exporter, Alertmanager, Grafana.
+- Prometheus alert rules for API down, readiness failing and 5xx spike.
+- Dedicated observability documentation: `docs/OBSERVABILITY.md`.
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).

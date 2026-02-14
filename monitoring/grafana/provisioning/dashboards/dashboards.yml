@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "IIoT Core Dashboards"
+    orgId: 1
+    folder: "IIoT Core"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

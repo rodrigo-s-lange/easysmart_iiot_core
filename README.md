@@ -14,6 +14,9 @@ Backend da plataforma IIoT: autenticação, provisionamento de devices, ingestã
 - OpenAPI: `docs/openapi.yaml`
 - Swagger UI: `http://localhost:8088` (serviço `swagger_ui`)
 - EMQX Dashboard: `http://localhost:18083`
+- Prometheus: `http://localhost:9090`
+- Alertmanager: `http://localhost:9093`
+- Grafana: `http://localhost:3002`
 
 ## Subir ambiente
 ```bash
@@ -126,6 +129,14 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
   - `GET /health/ready`
 - Metrics:
   - `GET /metrics`
+- Stack:
+  - `prometheus` (coleta + regras de alerta)
+  - `blackbox_exporter` (probe HTTP dos health endpoints)
+  - `alertmanager` (roteamento de alertas por webhook)
+  - `grafana` (dashboards provisionados)
+
+Configuração detalhada:
+- `docs/OBSERVABILITY.md`
 
 ## Banco e isolamento
 - Postgres: dados de tenant/users/devices
@@ -136,3 +147,4 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 - Histórico de mudanças: `CHANGELOG.md`
 - Contrato REST: `docs/openapi.yaml`
 - Roadmap técnico P0-P2: `docs/ROADMAP_P0_P2.md`
+- Observabilidade (monitoramento/alertas): `docs/OBSERVABILITY.md`
