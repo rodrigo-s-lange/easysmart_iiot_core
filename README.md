@@ -107,9 +107,11 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 - `/api/telemetry` protegido por API key
 - `/api/telemetry/latest` e `/api/telemetry/slots` agora exigem JWT + `telemetry:read`
 - Escopo por tenant aplicado nas consultas de leitura
+- Endpoints sensíveis com método HTTP restrito (GET/POST explícitos, `405` para método inválido)
 - Validação de tenant no tópico MQTT (tenant do tópico deve bater com tenant do device)
 - Rate limit de auth resiliente a Redis indisponível (sem panic)
 - Validação defensiva de API key curta (sem panic)
+- Seletores de leitura de telemetria sem ambiguidade: aceitar **apenas um** entre `device_id` e `device_label`
 
 ## Endpoints principais
 - Auth:

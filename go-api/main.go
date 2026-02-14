@@ -122,34 +122,36 @@ func main() {
 	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// Auth endpoints - remove method prefix to allow CORS OPTIONS
-	mux.Handle("/api/auth/register", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Register)))
-	mux.Handle("/api/auth/login", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Login)))
-	mux.Handle("/api/auth/refresh", rateLimitAuth.Limit(http.HandlerFunc(authHandler.Refresh)))
+	mux.Handle("/api/auth/register", middleware.RequireMethods(http.MethodPost)(rateLimitAuth.Limit(http.HandlerFunc(authHandler.Register))))
+	mux.Handle("/api/auth/login", middleware.RequireMethods(http.MethodPost)(rateLimitAuth.Limit(http.HandlerFunc(authHandler.Login))))
+	mux.Handle("/api/auth/refresh", middleware.RequireMethods(http.MethodPost)(rateLimitAuth.Limit(http.HandlerFunc(authHandler.Refresh))))
 
 	// Device bootstrap + secret (no auth required - devices poll this)
-	mux.Handle("/api/devices/bootstrap", http.HandlerFunc(deviceHandler.Bootstrap))
-	mux.Handle("/api/devices/secret", http.HandlerFunc(deviceHandler.GetSecret))
+	mux.Handle("/api/devices/bootstrap", middleware.RequireMethods(http.MethodPost)(http.HandlerFunc(deviceHandler.Bootstrap)))
+	mux.Handle("/api/devices/secret", middleware.RequireMethods(http.MethodPost)(http.HandlerFunc(deviceHandler.GetSecret)))
 
 	// Device claim (requires JWT + permission)
-	mux.Handle("/api/devices/claim",
+	mux.Handle("/api/devices/claim", middleware.RequireMethods(http.MethodPost)(
 		jwtMiddleware.Authenticate(
 			middleware.RequirePermission("devices:provision")(
 				http.HandlerFunc(deviceHandler.ClaimDevice),
 			),
 		),
+	),
 	)
 
 	// Device direct provisioning (requires JWT + permission)
-	mux.Handle("/api/devices/provision",
+	mux.Handle("/api/devices/provision", middleware.RequireMethods(http.MethodPost)(
 		jwtMiddleware.Authenticate(
 			middleware.RequirePermission("devices:provision")(
 				http.HandlerFunc(deviceHandler.ProvisionDevice),
 			),
 		),
+	),
 	)
 
 	// Device list (requires JWT + RLS)
-	mux.Handle("/api/devices",
+	mux.Handle("/api/devices", middleware.RequireMethods(http.MethodGet)(
 		jwtMiddleware.Authenticate(
 			tenantMiddleware.SetContext(
 				middleware.RequirePermission("devices:read")(
@@ -157,38 +159,43 @@ func main() {
 				),
 			),
 		),
+	),
 	)
 
 	// Device reset (requires JWT + permission)
-	mux.Handle("/api/devices/reset",
+	mux.Handle("/api/devices/reset", middleware.RequireMethods(http.MethodPost)(
 		jwtMiddleware.Authenticate(
-			middleware.RequirePermission("devices:write")(
+			middleware.RequirePermission("devices:provision")(
 				http.HandlerFunc(deviceHandler.ResetDevice),
 			),
 		),
+	),
 	)
 
 	// Telemetry webhook (requires API key)
-	mux.Handle("/api/telemetry",
+	mux.Handle("/api/telemetry", middleware.RequireMethods(http.MethodPost)(
 		apiKeyMiddleware.Authenticate(
 			http.HandlerFunc(telemetryHandler.Webhook),
 		),
+	),
 	)
 
 	// Telemetry reads (JWT + permission + tenant scoping)
-	mux.Handle("/api/telemetry/latest",
+	mux.Handle("/api/telemetry/latest", middleware.RequireMethods(http.MethodGet)(
 		jwtMiddleware.Authenticate(
 			middleware.RequirePermission("telemetry:read")(
 				http.HandlerFunc(telemetryHandler.GetLatest),
 			),
 		),
+	),
 	)
-	mux.Handle("/api/telemetry/slots",
+	mux.Handle("/api/telemetry/slots", middleware.RequireMethods(http.MethodGet)(
 		jwtMiddleware.Authenticate(
 			middleware.RequirePermission("telemetry:read")(
 				http.HandlerFunc(telemetryHandler.GetActiveSlots),
 			),
 		),
+	),
 	)
 
 	// CRITICAL: CORS must be FIRST in middleware chain to handle OPTIONS preflight

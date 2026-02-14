@@ -555,6 +555,7 @@ paths:
       description: |
         Returns the most recent cached value for a device/slot scoped to the authenticated tenant.
         Requires JWT with `telemetry:read`.
+        Exactly one selector must be provided: `device_id` or `device_label`.
       security:
         - bearerAuth: []
       parameters:
@@ -577,7 +578,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/LatestTelemetry" }
         "400":
-          description: Missing slot or device identifier
+          description: Missing slot/device selector or ambiguous selector (both device_id and device_label)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -588,6 +589,11 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "403":
           description: Missing telemetry:read permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "405":
+          description: Method not allowed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -609,6 +615,7 @@ paths:
       description: |
         Returns sorted list of slot numbers that have cached latest values,
         scoped to the authenticated tenant. Requires JWT with `telemetry:read`.
+        Exactly one selector must be provided: `device_id` or `device_label`.
       security:
         - bearerAuth: []
       parameters:
@@ -627,7 +634,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ActiveSlotsResponse" }
         "400":
-          description: Missing device identifier
+          description: Missing device selector or ambiguous selector (both device_id and device_label)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -638,6 +645,11 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "403":
           description: Missing telemetry:read permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "405":
+          description: Method not allowed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

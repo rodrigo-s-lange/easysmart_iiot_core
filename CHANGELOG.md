@@ -41,6 +41,7 @@ All notable changes to this project will be documented in this file.
   - `scripts/audit/test_e2e_mqtt_ingest.sh`
   - `scripts/audit/run_load_test.sh`
   - `scripts/audit/load_telemetry_k6.js`
+  - `scripts/audit/security_smoke.sh`
   - `database/backup_restore.sh`
 - Production validation runbook: `docs/PRODUCTION_VALIDATION.md`.
 
@@ -60,6 +61,9 @@ All notable changes to this project will be documented in this file.
 - Register flow now serializes first-user bootstrap via advisory lock (avoids multi-super-admin race).
 - Normalized migration ordering (`003/004/005`) and moved old single-tenant schema to `database/migrations/legacy/`.
 - `docs/ROADMAP_P0_P2.md` now includes explicit execution sequencing for P1 (P1.1 to P1.5).
+- Route hardening by explicit HTTP methods (invalid methods now return `405`).
+- Device reset now requires `devices:provision` permission (lifecycle scope alignment).
+- Telemetry read selectors now reject ambiguous requests that send both `device_id` and `device_label`.
 
 ### Docs
 - Documented CORS behavior and configuration.

@@ -223,6 +223,10 @@ func (h *TelemetryHandler) GetLatest(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "device_id or device_label is required")
 		return
 	}
+	if deviceIDParam != "" && deviceLabel != "" {
+		utils.WriteError(w, http.StatusBadRequest, "provide only one of device_id or device_label")
+		return
+	}
 
 	slot, err := strconv.Atoi(slotStr)
 	if err != nil {
@@ -287,6 +291,10 @@ func (h *TelemetryHandler) GetActiveSlots(w http.ResponseWriter, r *http.Request
 
 	if deviceIDParam == "" && deviceLabel == "" {
 		utils.WriteError(w, http.StatusBadRequest, "device_id or device_label is required")
+		return
+	}
+	if deviceIDParam != "" && deviceLabel != "" {
+		utils.WriteError(w, http.StatusBadRequest, "provide only one of device_id or device_label")
 		return
 	}
 

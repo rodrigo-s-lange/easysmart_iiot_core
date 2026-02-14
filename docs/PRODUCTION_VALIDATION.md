@@ -75,6 +75,17 @@ Saída:
 Observação:
 - o teste provisiona múltiplos devices para respeitar limites por device/slot.
 
+## 5) Security smoke (hardening de borda)
+Script:
+```bash
+./scripts/audit/security_smoke.sh
+```
+
+Valida:
+- método inválido em endpoint sensível retorna `405`;
+- JWT adulterado é rejeitado (`401`);
+- entrada estilo SQL injection não causa `500`.
+
 ## SLO operacional inicial (ajustável)
 - `RPO`: 24h (backup diário)
 - `RTO`: 30min (restore + validação técnica)

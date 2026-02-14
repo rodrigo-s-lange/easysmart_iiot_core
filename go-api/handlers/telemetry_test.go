@@ -46,11 +46,25 @@ func TestTelemetryReadsValidation(t *testing.T) {
 		t.Fatalf("GetLatest(no device) status = %d, want %d", wNoDevice.Code, http.StatusBadRequest)
 	}
 
+	reqBoth := httptest.NewRequest(http.MethodGet, "/api/telemetry/latest?device_id=11111111-1111-1111-1111-111111111111&device_label=x&slot=0", nil).WithContext(ctx)
+	wBoth := httptest.NewRecorder()
+	h.GetLatest(wBoth, reqBoth)
+	if wBoth.Code != http.StatusBadRequest {
+		t.Fatalf("GetLatest(both selectors) status = %d, want %d", wBoth.Code, http.StatusBadRequest)
+	}
+
 	reqSlotsNoDevice := httptest.NewRequest(http.MethodGet, "/api/telemetry/slots", nil).WithContext(ctx)
 	wSlotsNoDevice := httptest.NewRecorder()
 	h.GetActiveSlots(wSlotsNoDevice, reqSlotsNoDevice)
 	if wSlotsNoDevice.Code != http.StatusBadRequest {
 		t.Fatalf("GetActiveSlots(no device) status = %d, want %d", wSlotsNoDevice.Code, http.StatusBadRequest)
+	}
+
+	reqSlotsBoth := httptest.NewRequest(http.MethodGet, "/api/telemetry/slots?device_id=11111111-1111-1111-1111-111111111111&device_label=x", nil).WithContext(ctx)
+	wSlotsBoth := httptest.NewRecorder()
+	h.GetActiveSlots(wSlotsBoth, reqSlotsBoth)
+	if wSlotsBoth.Code != http.StatusBadRequest {
+		t.Fatalf("GetActiveSlots(both selectors) status = %d, want %d", wSlotsBoth.Code, http.StatusBadRequest)
 	}
 }
 
