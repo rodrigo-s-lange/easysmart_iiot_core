@@ -240,6 +240,34 @@ services:
     depends_on:
       - prometheus
 
+  telegram_ops_bot:
+    build:
+      context: ./monitoring/telegram_bot
+      dockerfile: Dockerfile
+    container_name: iiot_telegram_ops_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - API_BASE_URL=http://go_api:3001
+      - TELEGRAM_POLL_SECONDS=3
+      - TELEGRAM_WATCH_SECONDS=20
+      - TELEGRAM_ALLOWED_CHAT_IDS=${TELEGRAM_CHAT_ID}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - iiot_network
+    depends_on:
+      go_api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
 networks:
   iiot_network:
     name: iiot_platform_iiot_network

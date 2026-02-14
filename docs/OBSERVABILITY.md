@@ -7,6 +7,7 @@ Este documento cobre monitoramento e alertas do `easysmart_iiot_core` fora do co
 - `blackbox_exporter`: probe HTTP para `/health/live` e `/health/ready`.
 - `alertmanager`: roteia alertas para webhook.
 - `grafana`: dashboards.
+- `telegram_ops_bot`: comandos operacionais e notificações de eventos.
 
 ## Endpoints
 - Prometheus: `http://localhost:9090`
@@ -15,7 +16,7 @@ Este documento cobre monitoramento e alertas do `easysmart_iiot_core` fora do co
 
 ## Subir stack
 ```bash
-docker compose up -d prometheus blackbox_exporter alertmanager grafana
+docker compose up -d prometheus blackbox_exporter alertmanager grafana telegram_ops_bot
 docker compose ps
 ```
 
@@ -34,21 +35,57 @@ Arquivo: `monitoring/prometheus/alerts.yml`
 - Regra: `sum(rate(http_requests_total{status=~"5.."}[5m])) > 0.1` por `5m`
 - Significado: aumento sustentado de erros 5xx.
 
+4. `GoApiHighLatencyP95` (warning)
+- Regra: `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5` por `10m`
+- Significado: p95 de latência acima do objetivo.
+
+5. `GoApiHighErrorRate` (critical)
+- Regra: taxa de 5xx > 1% por 10m.
+- Significado: violação de SLO de erro HTTP.
+
+6. `PostgresTcpDown` / `TimescaleTcpDown` / `EmqxTcpDown` (critical)
+- Regra: `probe_success == 0` em probes TCP por 2m.
+- Significado: indisponibilidade de rede dos serviços críticos.
+
+7. `TelemetryIngestionFailureSpike` (warning)
+- Regra: rejeições de ingestão relevantes > 1 req/s por 10m.
+- Significado: backlog/falha de pipeline de ingestão.
+
 ## Canal de notificação
-`alertmanager` usa webhook.
+`alertmanager` roteia alertas `critical` para Telegram (on-call primário).
 
 Defina no `.env`:
 ```bash
-ALERT_WEBHOOK_URL=https://seu-endpoint-webhook
+TELEGRAM_BOT_TOKEN=<bot_token>
+TELEGRAM_CHAT_ID=<chat_id>
 ```
 
-Exemplos de destino:
-- Slack Incoming Webhook
-- Discord Webhook
-- NTFY / serviço interno
-- Endpoint próprio para rotear para Telegram/Email
+Fallback opcional (webhook secundário):
+```bash
+ALERT_FALLBACK_WEBHOOK_URL=https://seu-endpoint-webhook
+```
 
-Se `ALERT_WEBHOOK_URL` estiver vazio, o alertmanager mantém receiver sink local (sem envio externo).
+Compatibilidade: `ALERT_WEBHOOK_URL` (legado) ainda é aceito como fallback.
+
+Sem Telegram configurado, o alertmanager usa receiver sink local (sem envio externo).
+
+Janela de manutenção padrão:
+- diária, `03:00-03:30 UTC`, com mute no canal Telegram para alertas críticos.
+
+## SLO/SLI e runbooks
+- SLO/SLI por serviço: `docs/SLO_SLI.md`
+- Runbooks de incidente: `docs/RUNBOOKS.md`
+
+## Telegram Ops Bot
+Comandos no chat permitido:
+- `/health` (live/ready)
+- `/status` (containers críticos)
+- `/metrics` (resumo ingest/reject)
+- `/logs api|emqx|postgres|timescale|redis`
+
+Notificações automáticas:
+- novo usuário cadastrado;
+- novo dispositivo cadastrado.
 
 ## Dashboards Grafana
 Provisionados automaticamente:

@@ -27,3 +27,57 @@ groups:
         annotations:
           summary: "Spike de erros 5xx na API"
           description: "Taxa agregada de respostas 5xx acima de 0.1 req/s por 5 minutos."
+
+      - alert: GoApiHighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latência p95 da API acima do SLO"
+          description: "p95 de latência HTTP acima de 500ms por 10 minutos."
+
+      - alert: GoApiHighErrorRate
+        expr: (sum(rate(http_requests_total{status=~"5.."}[10m])) / clamp_min(sum(rate(http_requests_total[10m])), 0.001)) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taxa de erro HTTP acima do SLO"
+          description: "Erros 5xx acima de 1% por 10 minutos."
+
+      - alert: PostgresTcpDown
+        expr: probe_success{job="postgres_tcp"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres indisponível na rede"
+          description: "Blackbox TCP probe para postgres:5432 falhou por mais de 2 minutos."
+
+      - alert: TimescaleTcpDown
+        expr: probe_success{job="timescaledb_tcp"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TimescaleDB indisponível na rede"
+          description: "Blackbox TCP probe para timescaledb:5432 falhou por mais de 2 minutos."
+
+      - alert: EmqxTcpDown
+        expr: probe_success{job="emqx_tcp"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "EMQX indisponível na rede"
+          description: "Blackbox TCP probe para emqx:1883 falhou por mais de 2 minutos."
+
+      - alert: TelemetryIngestionFailureSpike
+        expr: sum(rate(telemetry_rejected_total{reason=~"db_error|tenant_mismatch|device_not_found|rate_limiter_unavailable"}[10m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Possível backlog/falha de ingestão"
+          description: "Rejeições de ingestão relevantes acima de 1 req/s por 10 minutos."

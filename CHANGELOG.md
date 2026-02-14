@@ -44,6 +44,9 @@ All notable changes to this project will be documented in this file.
   - `scripts/audit/security_smoke.sh`
   - `database/backup_restore.sh`
 - Production validation runbook: `docs/PRODUCTION_VALIDATION.md`.
+- SLO/SLI documentation by service: `docs/SLO_SLI.md`.
+- Incident runbooks: `docs/RUNBOOKS.md`.
+- Telegram Ops Bot (`telegram_ops_bot`) for operational chat commands and event notifications (new user/device).
 
 ### Changed
 - Go API grava telemetria no TimescaleDB (mantém auth no PostgreSQL).
@@ -67,6 +70,8 @@ All notable changes to this project will be documented in this file.
 - API versioning introduced with stable prefix `/api/v1` (legacy `/api` kept temporarily for compatibility).
 - Standardized error envelope now uses `code`, `message`, `request_id`, `details`.
 - OpenAPI paths updated to `/api/v1/*` and error schema aligned with runtime envelope.
+- Prometheus/Blackbox observability expanded with TCP probes (Postgres, TimescaleDB, EMQX) and new SLO-oriented alerts (latency/error-rate/ingestion-failure).
+- Alertmanager routing updated for Telegram on-call (`critical` only), with optional fallback webhook and maintenance mute window (03:00-03:30 UTC).
 
 ### Docs
 - Documented CORS behavior and configuration.

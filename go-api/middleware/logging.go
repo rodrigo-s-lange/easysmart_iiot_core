@@ -39,6 +39,7 @@ func Logging(next http.Handler) http.Handler {
 		}
 
 		metrics.ObserveHTTP(r.Method, r.URL.Path, strconv.Itoa(sw.status))
+		metrics.ObserveHTTPDuration(r.Method, r.URL.Path, strconv.Itoa(sw.status), time.Since(start).Seconds())
 
 		reqID, _ := r.Context().Value("request_id").(string)
 		slog.Info("http_request",

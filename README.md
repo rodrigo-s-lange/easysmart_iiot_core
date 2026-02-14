@@ -32,6 +32,16 @@ O serviço `emqx_bootstrap` reconcilia automaticamente (a cada 60s):
 
 Isso evita perda de ingestão MQTT após restart/reboot.
 
+O serviço `telegram_ops_bot` oferece comandos operacionais no Telegram:
+- `/health`
+- `/status`
+- `/metrics`
+- `/logs api|emqx|postgres|timescale|redis`
+
+Também envia notificações automáticas para:
+- novo usuário cadastrado;
+- novo dispositivo cadastrado.
+
 Variável obrigatória no `.env`:
 - `EMQX_WEBHOOK_API_KEY=<chave-longa-e-aleatoria>`
 
@@ -160,4 +170,6 @@ Configuração detalhada:
 - Contrato REST: `docs/openapi.yaml`
 - Roadmap técnico P0-P2: `docs/ROADMAP_P0_P2.md`
 - Observabilidade (monitoramento/alertas): `docs/OBSERVABILITY.md`
+- SLO/SLI por serviço: `docs/SLO_SLI.md`
+- Runbooks operacionais: `docs/RUNBOOKS.md`
 - Validação mínima para produção/auditoria: `docs/PRODUCTION_VALIDATION.md`
