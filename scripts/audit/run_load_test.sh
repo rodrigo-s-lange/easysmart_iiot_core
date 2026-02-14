@@ -29,7 +29,7 @@ EMAIL="load-$RAND@example.com"
 PASSWORD="Abcdef1!"
 
 echo "[1/3] Creating tenant user and provisioned device for load test..."
-AUTH_RESP="$(curl -sS -X POST "$API_BASE_URL/api/auth/register" \
+AUTH_RESP="$(curl -sS -X POST "$API_BASE_URL/api/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")"
 
@@ -43,7 +43,7 @@ fi
 
 DEVICE_IDS=()
 for i in $(seq 1 "$DEVICE_POOL_SIZE"); do
-  PROV_RESP="$(curl -sS -X POST "$API_BASE_URL/api/devices/provision" \
+  PROV_RESP="$(curl -sS -X POST "$API_BASE_URL/api/v1/devices/provision" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"device_label\":\"load-device-$RAND-$i\"}")"

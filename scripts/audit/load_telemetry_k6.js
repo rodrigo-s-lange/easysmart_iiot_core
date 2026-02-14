@@ -43,7 +43,7 @@ export default function () {
     timestamp: String(now),
   });
 
-  const res = http.post(`${apiBase}/api/telemetry`, payload, {
+  const res = http.post(`${apiBase}/api/v1/telemetry`, payload, {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,

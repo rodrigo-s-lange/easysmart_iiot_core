@@ -149,7 +149,10 @@ type ResetDeviceRequest struct {
 
 // ErrorResponse represents an error response
 type ErrorResponse struct {
-	Error string `json:"error"`
+	Code      string      `json:"code"`
+	Message   string      `json:"message"`
+	RequestID string      `json:"request_id,omitempty"`
+	Details   interface{} `json:"details,omitempty"`
 }
 
 // TelemetryRequest represents a telemetry webhook request

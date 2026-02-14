@@ -13,7 +13,7 @@ json_get() {
 register_user() {
   local email="$1"
   local password="$2"
-  curl -sS -X POST "$API_BASE_URL/api/auth/register" \
+  curl -sS -X POST "$API_BASE_URL/api/v1/auth/register" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$email\",\"password\":\"$password\"}"
 }
@@ -21,7 +21,7 @@ register_user() {
 provision_device() {
   local token="$1"
   local label="$2"
-  curl -sS -X POST "$API_BASE_URL/api/devices/provision" \
+  curl -sS -X POST "$API_BASE_URL/api/v1/devices/provision" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
     -d "{\"device_label\":\"$label\"}"
@@ -94,14 +94,14 @@ if [[ "$FOUND" != "1" ]]; then
 fi
 
 echo "[5/6] Validating API read for owner tenant..."
-LATEST_A="$(curl -sS -G "$API_BASE_URL/api/telemetry/latest" \
+LATEST_A="$(curl -sS -G "$API_BASE_URL/api/v1/telemetry/latest" \
   -H "Authorization: Bearer $TOKEN_A" \
   --data-urlencode "device_id=$DEVICE_ID" \
   --data-urlencode "slot=7")"
 assert_http_200 "$LATEST_A" "tenant A read latest"
 
 echo "[6/6] Validating isolation at API layer (tenant B must not read tenant A device)..."
-LATEST_B="$(curl -sS -G "$API_BASE_URL/api/telemetry/latest" \
+LATEST_B="$(curl -sS -G "$API_BASE_URL/api/v1/telemetry/latest" \
   -H "Authorization: Bearer $TOKEN_B" \
   --data-urlencode "device_id=$DEVICE_ID" \
   --data-urlencode "slot=7")"

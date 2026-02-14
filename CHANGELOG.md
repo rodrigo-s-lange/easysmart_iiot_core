@@ -64,6 +64,9 @@ All notable changes to this project will be documented in this file.
 - Route hardening by explicit HTTP methods (invalid methods now return `405`).
 - Device reset now requires `devices:provision` permission (lifecycle scope alignment).
 - Telemetry read selectors now reject ambiguous requests that send both `device_id` and `device_label`.
+- API versioning introduced with stable prefix `/api/v1` (legacy `/api` kept temporarily for compatibility).
+- Standardized error envelope now uses `code`, `message`, `request_id`, `details`.
+- OpenAPI paths updated to `/api/v1/*` and error schema aligned with runtime envelope.
 
 ### Docs
 - Documented CORS behavior and configuration.

@@ -72,7 +72,7 @@ Observação: ainda faltam testes de integração completos para fechar 100% dos
 ## Fluxo de provisionamento (atual)
 
 ### 1. Provisionamento direto (usuário autenticado)
-`POST /api/devices/provision`
+`POST /api/v1/devices/provision`
 - Requer JWT com `devices:provision`
 - Cria device já associado ao tenant do usuário
 - Retorna imediatamente:
@@ -83,11 +83,11 @@ Observação: ainda faltam testes de integração completos para fechar 100% dos
   - `broker`
 
 ### 2. Provisionamento por claim (legado, ainda suportado)
-- `POST /api/devices/claim`
-- `POST /api/devices/bootstrap`
-- `POST /api/devices/secret`
+- `POST /api/v1/devices/claim`
+- `POST /api/v1/devices/bootstrap`
+- `POST /api/v1/devices/secret`
 
-Observação: `POST /api/devices/secret` é **one-time**. Se o secret expirar/não estiver mais no cache, não é reemitido automaticamente; é necessário reset + novo claim/provision.
+Observação: `POST /api/v1/devices/secret` é **one-time**. Se o secret expirar/não estiver mais no cache, não é reemitido automaticamente; é necessário reset + novo claim/provision.
 
 ## Publicação MQTT
 Tópico esperado:
@@ -104,8 +104,8 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 
 ## Segurança aplicada
 - JWT obrigatório para endpoints de usuário
-- `/api/telemetry` protegido por API key
-- `/api/telemetry/latest` e `/api/telemetry/slots` agora exigem JWT + `telemetry:read`
+- `/api/v1/telemetry` protegido por API key
+- `/api/v1/telemetry/latest` e `/api/v1/telemetry/slots` agora exigem JWT + `telemetry:read`
 - Escopo por tenant aplicado nas consultas de leitura
 - Endpoints sensíveis com método HTTP restrito (GET/POST explícitos, `405` para método inválido)
 - Validação de tenant no tópico MQTT (tenant do tópico deve bater com tenant do device)
@@ -115,21 +115,24 @@ mosquitto_pub -h 192.168.0.99 -p 1883 \
 
 ## Endpoints principais
 - Auth:
-  - `POST /api/auth/register`
-  - `POST /api/auth/login`
-  - `POST /api/auth/refresh`
+  - `POST /api/v1/auth/register`
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/refresh`
 - Devices:
-  - `GET /api/devices`
-  - `POST /api/devices/provision`
-  - `POST /api/devices/claim`
-  - `POST /api/devices/reset`
+  - `GET /api/v1/devices`
+  - `POST /api/v1/devices/provision`
+  - `POST /api/v1/devices/claim`
+  - `POST /api/v1/devices/reset`
 - Device bootstrap/secret:
-  - `POST /api/devices/bootstrap`
-  - `POST /api/devices/secret`
+  - `POST /api/v1/devices/bootstrap`
+  - `POST /api/v1/devices/secret`
 - Telemetry:
-  - `POST /api/telemetry`
-  - `GET /api/telemetry/latest`
-  - `GET /api/telemetry/slots`
+  - `POST /api/v1/telemetry`
+  - `GET /api/v1/telemetry/latest`
+  - `GET /api/v1/telemetry/slots`
+
+Compatibilidade temporária:
+- Prefixo legado `/api/*` ainda disponível durante transição para `/api/v1/*`.
 
 ## Observabilidade
 - Health:

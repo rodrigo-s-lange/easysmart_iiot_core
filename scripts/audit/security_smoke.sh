@@ -13,7 +13,7 @@ EMAIL="security-$RAND@example.com"
 PASSWORD="Abcdef1!"
 
 echo "[1/4] Registering user for security smoke tests..."
-RESP="$(curl -sS -X POST "$API_BASE_URL/api/auth/register" \
+RESP="$(curl -sS -X POST "$API_BASE_URL/api/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")"
 TOKEN="$(echo "$RESP" | json_get access_token)"
@@ -25,7 +25,7 @@ fi
 
 echo "[2/4] Validating method hardening (GET on POST endpoint => 405)..."
 STATUS_METHOD="$(curl -sS -o /tmp/security_method_body.txt -w "%{http_code}" \
-  -X GET "$API_BASE_URL/api/devices/provision" \
+  -X GET "$API_BASE_URL/api/v1/devices/provision" \
   -H "Authorization: Bearer $TOKEN")"
 if [[ "$STATUS_METHOD" != "405" ]]; then
   echo "FAILED: expected 405, got $STATUS_METHOD body=$(cat /tmp/security_method_body.txt)"
@@ -35,7 +35,7 @@ fi
 echo "[3/4] Validating JWT tamper rejection..."
 TAMPERED="${TOKEN%?}X"
 STATUS_JWT="$(curl -sS -o /tmp/security_jwt_body.txt -w "%{http_code}" \
-  -X GET "$API_BASE_URL/api/devices" \
+  -X GET "$API_BASE_URL/api/v1/devices" \
   -H "Authorization: Bearer $TAMPERED")"
 if [[ "$STATUS_JWT" != "401" ]]; then
   echo "FAILED: expected 401, got $STATUS_JWT body=$(cat /tmp/security_jwt_body.txt)"
@@ -44,7 +44,7 @@ fi
 
 echo "[4/4] Validating SQL-injection style input handling..."
 STATUS_SQLI="$(curl -sS -o /tmp/security_sqli_body.txt -w "%{http_code}" \
-  -G "$API_BASE_URL/api/telemetry/latest" \
+  -G "$API_BASE_URL/api/v1/telemetry/latest" \
   -H "Authorization: Bearer $TOKEN" \
   --data-urlencode "device_label=' OR '1'='1" \
   --data-urlencode "slot=0")"

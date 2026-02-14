@@ -7,6 +7,7 @@ info:
     Esta especificacao documenta endpoints atuais (auth, devices, telemetry).
 servers:
   - url: http://localhost:3001
+    description: Core API host
 tags:
   - name: Health
   - name: Auth
@@ -27,11 +28,17 @@ components:
     ErrorResponse:
       type: object
       properties:
-        error:
+        code:
           type: string
+          example: bad_request
+        message:
+          type: string
+          example: Invalid request body
         request_id:
           type: string
-      required: [error]
+        details:
+          nullable: true
+      required: [code, message]
     UserObject:
       type: object
       properties:
@@ -203,7 +210,7 @@ paths:
         "200":
           description: OK
 
-  /api/auth/register:
+  /api/v1/auth/register:
     post:
       tags: [Auth]
       summary: Register user (creates tenant automatically)
@@ -232,7 +239,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/auth/login:
+  /api/v1/auth/login:
     post:
       tags: [Auth]
       summary: Login
@@ -258,7 +265,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/auth/refresh:
+  /api/v1/auth/refresh:
     post:
       tags: [Auth]
       summary: Refresh tokens (rotation with blacklist)
@@ -292,7 +299,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/devices:
+  /api/v1/devices:
     get:
       tags: [Devices]
       summary: List devices for current tenant
@@ -320,7 +327,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/devices/claim:
+  /api/v1/devices/claim:
     post:
       tags: [Devices]
       summary: Claim device (assign to tenant)
@@ -356,7 +363,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/devices/provision:
+  /api/v1/devices/provision:
     post:
       tags: [Devices]
       summary: Direct device provisioning (authenticated user)
@@ -398,7 +405,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/devices/bootstrap:
+  /api/v1/devices/bootstrap:
     post:
       tags: [Devices]
       summary: Device bootstrap (HMAC polling)
@@ -427,7 +434,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/devices/secret:
+  /api/v1/devices/secret:
     post:
       tags: [Devices]
       summary: Device secret retrieval (HMAC, one-time)
@@ -466,7 +473,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/devices/reset:
+  /api/v1/devices/reset:
     post:
       tags: [Devices]
       summary: Reset device to unclaimed
@@ -497,7 +504,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/telemetry:
+  /api/v1/telemetry:
     post:
       tags: [Telemetry]
       summary: Telemetry webhook (EMQX Rule Engine)
@@ -548,7 +555,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/telemetry/latest:
+  /api/v1/telemetry/latest:
     get:
       tags: [Telemetry]
       summary: Latest telemetry from Redis cache
@@ -608,7 +615,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
-  /api/telemetry/slots:
+  /api/v1/telemetry/slots:
     get:
       tags: [Telemetry]
       summary: Active slots from Redis cache
