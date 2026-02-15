@@ -30,9 +30,12 @@ notify_telegram() {
   ./database/backup_restore.sh backup
   LATEST_BACKUP="$(ls -1dt backups/db/* | head -n1)"
   echo "[$(date -u +%FT%TZ)] backup ok: ${LATEST_BACKUP}"
+  echo "[$(date -u +%FT%TZ)] syncing backup offsite (if enabled)"
+  ./scripts/ops/sync_backup_offsite.sh "$LATEST_BACKUP"
   echo "status=ok" > "$STATE_DIR/last_backup.status"
   echo "timestamp=$(date -u +%FT%TZ)" >> "$STATE_DIR/last_backup.status"
   echo "backup_dir=$LATEST_BACKUP" >> "$STATE_DIR/last_backup.status"
+  echo "offsite_mode=${OFFSITE_BACKUP_MODE:-disabled}" >> "$STATE_DIR/last_backup.status"
 } | tee "$LOG_FILE"
 
 notify_telegram "[IIoT Core] Backup diario concluido: ${STAMP}"

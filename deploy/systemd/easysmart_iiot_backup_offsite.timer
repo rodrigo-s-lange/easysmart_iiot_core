@@ -1,0 +1,10 @@
+[Unit]
+Description=Run EasySmart IIoT Core Offsite Backup Sync Daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+Unit=easysmart_iiot_backup_offsite.service
+
+[Install]
+WantedBy=timers.target

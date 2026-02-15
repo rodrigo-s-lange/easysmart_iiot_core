@@ -110,3 +110,33 @@ docker exec -i iiot_timescaledb psql -U admin -d iiot_telemetry -c "SELECT count
 1. Registrar timeline (início, detecção, mitigação, recuperação).
 2. Registrar tenant(s) impactado(s) e janela.
 3. Abrir ação corretiva com causa raiz e prevenção.
+
+---
+
+## 4) Rollback manual de deploy (Go API / Telegram bot)
+### Objetivo
+Voltar rapidamente para as imagens anteriores quando o deploy degradar o serviço.
+
+### Pré-requisito
+Sempre fazer deploy usando:
+```bash
+./scripts/ops/deploy_core.sh
+```
+Esse comando salva as imagens anteriores em `deploy/state/last_images.env`.
+
+### Rollback
+```bash
+./scripts/ops/rollback_core.sh
+docker compose ps go_api telegram_ops_bot
+```
+
+### Validação pós-rollback
+```bash
+curl -s -i http://localhost:3001/health
+curl -s -i http://localhost:3001/health/ready
+```
+
+### Escalonar se
+- não existir `deploy/state/last_images.env`;
+- imagem anterior também falhar;
+- erro persistir após rollback.

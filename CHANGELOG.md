@@ -55,8 +55,12 @@ Note: entries before API versioning may reference historical routes under `/api/
 - Data resilience automation:
   - `scripts/ops/run_backup_daily.sh`
   - `scripts/ops/run_restore_drill_weekly.sh`
+  - `scripts/ops/sync_backup_offsite.sh`
   - `deploy/systemd/*` timers/services for scheduled backup + restore drill
   - `docs/DATA_RESILIENCE.md`
+- Manual safe deploy/rollback scripts:
+  - `scripts/ops/deploy_core.sh`
+  - `scripts/ops/rollback_core.sh`
 - Tenant telemetry retention base:
   - migration `database/timescale/migrations/003_tenant_retention_policy.sql`
   - archive/prune script `database/timescale/maintenance/archive_telemetry_by_tenant.sh`
@@ -99,6 +103,7 @@ Note: entries before API versioning may reference historical routes under `/api/
 - OpenAPI updated with direct provisioning endpoint and telemetry read auth requirements.
 - README rewritten in lighter format and aligned with current provisioning/security behavior.
 - Documentation set revised and synchronized with runtime behavior (`README`, `STATUS`, `OBSERVABILITY`, `ROADMAP_P0_P2`).
+- CI workflow improved with path filters, manual trigger and docker build validation.
 
 ### Removed
 - Express API e serviço `nextjs` do compose (Go API agora é o único ingest).

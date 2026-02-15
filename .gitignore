@@ -43,3 +43,6 @@ emqx/data/
 
 # Test/load artifacts
 artifacts/
+
+# Deploy rollback state
+deploy/state/

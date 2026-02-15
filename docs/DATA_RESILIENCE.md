@@ -7,6 +7,7 @@ Este documento define operação de backup/restore, retenção/arquivamento de t
 ### Scripts operacionais
 - Backup diário: `scripts/ops/run_backup_daily.sh`
 - Restore drill semanal: `scripts/ops/run_restore_drill_weekly.sh`
+- Sync offsite: `scripts/ops/sync_backup_offsite.sh`
 
 Os scripts usam `database/backup_restore.sh` e gravam estado em:
 - `backups/ops_state/last_backup.status`
@@ -14,10 +15,22 @@ Os scripts usam `database/backup_restore.sh` e gravam estado em:
 
 Se Telegram estiver configurado (`TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`), enviam notificação de sucesso/falha.
 
+### Offsite backup (essencial)
+Configuração por `.env`:
+- `OFFSITE_BACKUP_MODE=disabled|rsync|rclone`
+- `OFFSITE_RSYNC_TARGET=user@backup-host:/srv/easysmart/iiot_core` (quando `rsync`)
+- `OFFSITE_RCLONE_REMOTE=remote:bucket/path` (quando `rclone`)
+
+Comportamento:
+- `run_backup_daily.sh` executa backup local e depois tenta sync offsite.
+- Se `OFFSITE_BACKUP_MODE=disabled`, o passo offsite é ignorado sem erro.
+
 ### Agendamento systemd (produção)
 Arquivos:
 - `deploy/systemd/easysmart_iiot_backup.service`
 - `deploy/systemd/easysmart_iiot_backup.timer`
+- `deploy/systemd/easysmart_iiot_backup_offsite.service`
+- `deploy/systemd/easysmart_iiot_backup_offsite.timer`
 - `deploy/systemd/easysmart_iiot_restore_drill.service`
 - `deploy/systemd/easysmart_iiot_restore_drill.timer`
 
@@ -28,6 +41,7 @@ Instalação:
 
 Agenda padrão:
 - Backup diário: `03:05 UTC`
+- Offsite diário: `03:15 UTC`
 - Restore drill semanal: `domingo 03:20 UTC`
 
 ## 2) Retenção/arquivamento de telemetria por tenant

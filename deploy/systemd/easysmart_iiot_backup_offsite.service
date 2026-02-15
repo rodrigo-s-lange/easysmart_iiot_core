@@ -1,0 +1,15 @@
+[Unit]
+Description=EasySmart IIoT Core Offsite Backup Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=rodrigo
+WorkingDirectory=/home/rodrigo/easysmart_iiot_core
+ExecStart=/home/rodrigo/easysmart_iiot_core/scripts/ops/sync_backup_offsite.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

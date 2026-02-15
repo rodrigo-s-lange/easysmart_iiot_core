@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ErrInvalidToken    = errors.New("invalid token")
-	ErrExpiredToken    = errors.New("expired token")
+	ErrInvalidToken     = errors.New("invalid token")
+	ErrExpiredToken     = errors.New("expired token")
 	ErrBlacklistedToken = errors.New("token has been revoked")
 )
 
@@ -80,7 +80,7 @@ func IsTokenBlacklisted(redisClient *redis.Client, jti string) (bool, error) {
 
 	ctx := context.Background()
 	key := fmt.Sprintf("jwt:blacklist:%s", jti)
-	
+
 	exists, err := redisClient.Exists(ctx, key).Result()
 	if err != nil {
 		return false, err
@@ -97,7 +97,7 @@ func BlacklistToken(redisClient *redis.Client, jti string, ttl time.Duration) er
 
 	ctx := context.Background()
 	key := fmt.Sprintf("jwt:blacklist:%s", jti)
-	
+
 	return redisClient.Set(ctx, key, "1", ttl).Err()
 }
 

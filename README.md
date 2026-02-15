@@ -104,6 +104,7 @@ Detalhes: `docs/OBSERVABILITY.md`.
 
 ## Resiliencia de Dados
 - Backup diario + restore drill semanal.
+- Sync offsite de backup (rsync/rclone) configuravel por `.env`.
 - Politica de retencao/arquivamento por tenant.
 - RPO/RTO por plano (documentado).
 
@@ -114,6 +115,30 @@ Detalhes: `docs/DATA_RESILIENCE.md`.
 - E2E MQTT ingestao: `scripts/audit/test_e2e_mqtt_ingest.sh`
 - Security smoke: `scripts/audit/security_smoke.sh`
 - Carga basica: `scripts/audit/run_load_test.sh`
+
+## Deploy seguro minimo
+- Deploy com checkpoint para rollback:
+  - `./scripts/ops/deploy_core.sh`
+- Rollback manual:
+  - `./scripts/ops/rollback_core.sh`
+- CI basico em GitHub Actions:
+  - `gofmt` check
+  - `go vet`
+  - `go test`
+  - `go build`
+  - validacao de `docker build`
+
+Checklist para liberar producao:
+1. CI mais recente do branch principal precisa estar `success`.
+2. Offsite backup habilitado (`OFFSITE_BACKUP_MODE=rsync` ou `rclone`).
+3. Timer de backup offsite ativo no systemd.
+
+Comandos:
+```bash
+./scripts/ops/check_ci_status.sh
+sudo systemctl status --no-pager easysmart_iiot_backup_offsite.timer
+grep -E '^OFFSITE_BACKUP_MODE=' .env
+```
 
 ## Referencias
 - Contrato API: `docs/openapi.yaml`
