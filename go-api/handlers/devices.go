@@ -72,6 +72,9 @@ func (h *DeviceHandler) ProvisionDevice(w http.ResponseWriter, r *http.Request) 
 	if claims, ok := r.Context().Value("jwt_claims").(*models.JWTClaims); ok && claims != nil {
 		userEmail = claims.Email
 	}
+	if userEmail == "" {
+		userEmail = fetchUserEmailByID(context.Background(), h.DB, userID)
+	}
 
 	allowed, err := enforceDeviceQuota(context.Background(), h.DB, h.Config, tenantID, userID, userEmail)
 	if err != nil {
@@ -165,6 +168,9 @@ func (h *DeviceHandler) ClaimDevice(w http.ResponseWriter, r *http.Request) {
 	userEmail := ""
 	if claims, ok := r.Context().Value("jwt_claims").(*models.JWTClaims); ok && claims != nil {
 		userEmail = claims.Email
+	}
+	if userEmail == "" {
+		userEmail = fetchUserEmailByID(context.Background(), h.DB, userID)
 	}
 
 	allowed, err := enforceDeviceQuota(context.Background(), h.DB, h.Config, tenantID, userID, userEmail)
@@ -318,6 +324,17 @@ func (h *DeviceHandler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		DeviceID:     req.DeviceID,
 		PollInterval: 60,
 	})
+}
+
+func fetchUserEmailByID(ctx context.Context, db *pgxpool.Pool, userID string) string {
+	if db == nil || strings.TrimSpace(userID) == "" {
+		return ""
+	}
+	var email string
+	if err := db.QueryRow(ctx, `SELECT email FROM users WHERE user_id = $1::uuid`, userID).Scan(&email); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(email)
 }
 
 // GetSecret handles secret retrieval (one-time use) via HMAC + timestamp

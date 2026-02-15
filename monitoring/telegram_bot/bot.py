@@ -6,11 +6,14 @@ import requests
 import psycopg2
 import docker
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://go_api:3001").rstrip("/")
 POLL_SECONDS = int(os.environ.get("TELEGRAM_POLL_SECONDS", "3"))
 WATCH_SECONDS = int(os.environ.get("TELEGRAM_WATCH_SECONDS", "20"))
+TELEGRAM_TIMEZONE = os.environ.get("TELEGRAM_TIMEZONE", "America/Sao_Paulo")
+TELEGRAM_WATCH_NOTIFY_EVENTS = os.environ.get("TELEGRAM_WATCH_NOTIFY_EVENTS", "false").strip().lower() in ("1", "true", "yes", "on")
 
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "postgres")
 POSTGRES_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
@@ -39,6 +42,28 @@ def send_message(chat_id: str, text: str):
         data={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
         timeout=10,
     )
+
+
+def render_event(title: str, fields: dict[str, str]):
+    order = [
+        "email",
+        "role",
+        "user_id",
+        "tenant_id",
+        "user_email",
+        "device_id",
+        "device_label",
+        "status",
+        "source",
+        "request_id",
+        "horario",
+    ]
+    lines = [title]
+    for key in order:
+        value = str(fields.get(key, "")).strip()
+        if value:
+            lines.append(f"• {key}: {value}")
+    return "\n".join(lines)
 
 
 def is_allowed(chat_id: str) -> bool:
@@ -213,7 +238,7 @@ def get_new_devices(cur, since_ts):
 
 def fmt_ts(ts):
     try:
-        return ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        return ts.astimezone(ZoneInfo(TELEGRAM_TIMEZONE)).strftime("%d/%m/%Y %H:%M:%S")
     except Exception:
         return str(ts)
 
@@ -253,16 +278,33 @@ def watch_new_entities(default_chat_id: str, state: dict):
         state.update(cur_state)
         return
 
+    # Avoid duplicate notifications with backend-originated alerts.
+    # Can be enabled explicitly via TELEGRAM_WATCH_NOTIFY_EVENTS=true.
+    if not TELEGRAM_WATCH_NOTIFY_EVENTS:
+        state.update(cur_state)
+        return
+
     if cur_state["users_count"] > state["users_count"]:
         diff = cur_state["users_count"] - state["users_count"]
         with get_db_conn() as conn:
             with conn.cursor() as cur:
                 rows = get_new_users(cur, state["users_max"])
 
-        lines = [f"Novo usuário cadastrado: +{diff} (total={cur_state['users_count']})"]
+        lines = [f"🧾 [USUARIO] Cadastro detectado (+{diff}, total={cur_state['users_count']})"]
         for row in rows[:5]:
             user_id, tenant_id, email, role, created_at = row
-            lines.append(f"- {email} ({role}) id={str(user_id)[:8]}... at={fmt_ts(created_at)}")
+            lines.append(
+                render_event(
+                    "└ detalhe",
+                    {
+                        "email": email,
+                        "role": role,
+                        "user_id": str(user_id),
+                        "tenant_id": str(tenant_id),
+                        "horario": fmt_ts(created_at),
+                    },
+                )
+            )
             write_notification_audit(
                 tenant_id,
                 user_id,
@@ -271,6 +313,8 @@ def watch_new_entities(default_chat_id: str, state: dict):
                     "chat_id": default_chat_id,
                     "email": email,
                     "role": role,
+                    "user_id": str(user_id),
+                    "tenant_id": str(tenant_id),
                     "created_at": fmt_ts(created_at),
                 },
             )
@@ -284,11 +328,21 @@ def watch_new_entities(default_chat_id: str, state: dict):
             with conn.cursor() as cur:
                 rows = get_new_devices(cur, state["devices_max"])
 
-        lines = [f"Novo dispositivo cadastrado: +{diff} (total={cur_state['devices_count']})"]
+        lines = [f"📟 [DEVICE] Cadastro detectado (+{diff}, total={cur_state['devices_count']})"]
         for row in rows[:5]:
             device_id, tenant_id, device_label, status, created_at = row
             lines.append(
-                f"- label={device_label} id={str(device_id)[:8]}... tenant={str(tenant_id)[:8]}... status={status} at={fmt_ts(created_at)}"
+                render_event(
+                    "└ detalhe",
+                    {
+                        "tenant_id": str(tenant_id),
+                        "device_id": str(device_id),
+                        "device_label": str(device_label),
+                        "status": str(status),
+                        "source": "watcher_db",
+                        "horario": fmt_ts(created_at),
+                    },
+                )
             )
             write_notification_audit(
                 tenant_id,
@@ -296,9 +350,11 @@ def watch_new_entities(default_chat_id: str, state: dict):
                 "ops.device_created_notified",
                 {
                     "chat_id": default_chat_id,
+                    "tenant_id": str(tenant_id),
                     "device_id": str(device_id),
                     "device_label": device_label,
                     "status": status,
+                    "source": "watcher_db",
                     "created_at": fmt_ts(created_at),
                 },
             )

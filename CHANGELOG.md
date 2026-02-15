@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+Note: entries before API versioning may reference historical routes under `/api/*`.
+
 ## [Unreleased]
 ### Added
 - TimescaleDB service and init schema for telemetria.
@@ -48,6 +50,8 @@ All notable changes to this project will be documented in this file.
 - Incident runbooks: `docs/RUNBOOKS.md`.
 - Telegram Ops Bot (`telegram_ops_bot`) for operational chat commands and event notifications (new user/device).
 - Operational Telegram notifications from backend for `auth/register` and `devices/provision|claim`, including user email and device identifiers.
+- Telegram notifications now use a standardized visual layout (`[USUARIO]`, `[DEVICE]`, `[QUOTA]`) with ordered fields and BR timestamp.
+- Telegram duplicate notifications removed by default (`TELEGRAM_WATCH_NOTIFY_EVENTS=false`), keeping backend-originated events as primary source.
 - Data resilience automation:
   - `scripts/ops/run_backup_daily.sh`
   - `scripts/ops/run_restore_drill_weekly.sh`
@@ -94,6 +98,7 @@ All notable changes to this project will be documented in this file.
 - Added short-term implementation roadmap (observability, operational security, provisioning tests/reset).
 - OpenAPI updated with direct provisioning endpoint and telemetry read auth requirements.
 - README rewritten in lighter format and aligned with current provisioning/security behavior.
+- Documentation set revised and synchronized with runtime behavior (`README`, `STATUS`, `OBSERVABILITY`, `ROADMAP_P0_P2`).
 
 ### Removed
 - Express API e serviço `nextjs` do compose (Go API agora é o único ingest).

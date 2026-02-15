@@ -84,13 +84,24 @@ Comandos no chat permitido:
 - `/logs api|emqx|postgres|timescale|redis`
 
 Notificações automáticas:
-- novo usuário cadastrado (com `email` e `role`);
-- novo dispositivo cadastrado (com `tenant_id`, `user_email`, `device_id`, `device_label`).
+- backend envia eventos principais:
+  - novo usuário cadastrado (com `email`, `role`, `user_id`, `tenant_id`);
+  - novo device cadastrado (com `tenant_id`, `user_email`, `device_id`, `device_label`, `source`);
+  - bloqueios de quota (`[QUOTA]`).
+- layout padronizado no Telegram com cabeçalho (`[USUARIO]`, `[DEVICE]`, `[QUOTA]`) e campos em ordem fixa.
+- em mensagens de erro, incluir `request_id` quando disponível.
+- horário exibido em formato BR.
 
 Auditoria operacional:
 - cada envio automático gera evento em `audit_log`;
 - `event_type`: `ops.user_registered_notified` ou `ops.device_created_notified`;
 - `action=telegram_notify`, `result=success|failed|skipped`.
+
+Deduplicação de notificações:
+- watcher de DB do `telegram_ops_bot` fica **desativado por padrão** para evitar mensagens duplicadas.
+- env de controle:
+  - `TELEGRAM_WATCH_NOTIFY_EVENTS=false` (default)
+  - `TELEGRAM_WATCH_NOTIFY_EVENTS=true` (reativa mensagens "detectado")
 
 ## Dashboards Grafana
 Provisionados automaticamente:

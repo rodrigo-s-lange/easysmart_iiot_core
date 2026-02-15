@@ -189,9 +189,21 @@ func SendQuotaTelegramAsync(cfg *config.Config, title string, lines ...string) {
 	if cfg == nil {
 		return
 	}
-	msg := title
+	msg := "🚨 [QUOTA] Evento"
+	if strings.TrimSpace(title) != "" {
+		msg = fmt.Sprintf("%s\n• titulo: %s", msg, title)
+	}
 	if len(lines) > 0 {
-		msg = fmt.Sprintf("%s\n%s", title, strings.Join(lines, "\n"))
+		formatted := make([]string, 0, len(lines))
+		for _, l := range lines {
+			if strings.TrimSpace(l) == "" {
+				continue
+			}
+			formatted = append(formatted, fmt.Sprintf("• %s", l))
+		}
+		if len(formatted) > 0 {
+			msg = fmt.Sprintf("%s\n%s", msg, strings.Join(formatted, "\n"))
+		}
 	}
 	go func() {
 		_ = utils.SendTelegramMessage(context.Background(), cfg.TelegramBotToken, cfg.TelegramChatID, msg)

@@ -1,187 +1,123 @@
 # EasySmart IIoT Core
 
-Backend da plataforma IIoT: autenticação, provisionamento de devices, ingestão MQTT via webhook e persistência de telemetria.
+Backend da plataforma IIoT (auth, devices, ingestao MQTT, telemetria, observabilidade e operacao).
 
-## Stack
-- EMQX 5.5 (broker MQTT)
-- Go API (porta `3001`)
-- PostgreSQL 16 (auth/devices)
-- TimescaleDB 2.x (telemetria)
-- Redis 7 (rate limit + cache latest)
+## Estado Atual
+- API Go em producao local com prefixo estavel `/api/v1`.
+- Persistencia separada:
+  - PostgreSQL: tenants/users/devices/auditoria/billing.
+  - TimescaleDB: telemetria (`telemetry`) com `tenant_id`.
+- MQTT via EMQX 5.5 com webhook para API.
+- Redis para cache/rate-limit/quotas.
+- Observabilidade com Prometheus + Alertmanager + Grafana.
+- Telegram operacional ativo para alertas e eventos.
 
-## Serviços locais
+## Servicos Locais
 - API: `http://localhost:3001`
 - OpenAPI: `docs/openapi.yaml`
-- Swagger UI: `http://localhost:8088` (serviço `swagger_ui`)
+- Swagger UI: `http://localhost:8088`
 - EMQX Dashboard: `http://localhost:18083`
 - Prometheus: `http://localhost:9090`
 - Alertmanager: `http://localhost:9093`
 - Grafana: `http://localhost:3002`
 
-## Subir ambiente
+## Subida
 ```bash
-docker-compose up -d
-docker-compose ps
+docker compose up -d
+docker compose ps
 ```
 
-O serviço `emqx_bootstrap` reconcilia automaticamente (a cada 60s):
-- API key de webhook em `api_keys` (Postgres);
-- connector HTTP `api_webhook`;
-- action HTTP `send_to_api`;
-- rule `telemetry_ingest`.
+## Fluxos Implementados
 
-Isso evita perda de ingestão MQTT após restart/reboot.
+### Auth
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
 
-O serviço `telegram_ops_bot` oferece comandos operacionais no Telegram:
-- `/health`
-- `/status`
-- `/metrics`
-- `/logs api|emqx|postgres|timescale|redis`
+### Devices
+- Provisionamento direto (principal):
+  - `POST /api/v1/devices/provision`
+- Fluxo claim (legado suportado):
+  - `POST /api/v1/devices/claim`
+  - `POST /api/v1/devices/bootstrap`
+  - `POST /api/v1/devices/secret` (one-time)
+  - `POST /api/v1/devices/reset`
 
-Também envia notificações automáticas para:
-- novo usuário cadastrado (inclui `email` e `role`);
-- novo dispositivo cadastrado (inclui `tenant_id`, `user_email`, `device_id`, `device_label`).
+### Telemetry
+- Ingestao: `POST /api/v1/telemetry`
+- Leitura:
+  - `GET /api/v1/telemetry/latest`
+  - `GET /api/v1/telemetry/slots`
 
-Cada envio automático para Telegram também gera trilha em `audit_log` com:
-- `event_type=ops.user_registered_notified` ou `ops.device_created_notified`
-- `action=telegram_notify`
-- `result=success|failed|skipped`
+### Tenant Admin (super_admin)
+- `GET /api/v1/tenants/{tenant_id}/quotas`
+- `PATCH /api/v1/tenants/{tenant_id}/quotas`
+- `GET /api/v1/tenants/{tenant_id}/usage`
 
-Variável obrigatória no `.env`:
-- `EMQX_WEBHOOK_API_KEY=<chave-longa-e-aleatoria>`
+## Seguranca Aplicada
+- JWT para endpoints de usuario.
+- API key para webhook de telemetria.
+- Isolamento por tenant nas leituras de telemetria.
+- Validacao tenant/topic/device no webhook MQTT.
+- Rate-limit de auth e limites de telemetria.
+- Quotas de billing por tenant (devices, msg/min por device, storage).
+- Trilhas de auditoria em `audit_log`.
 
-## Migrações (normalizado)
-- Migrações ativas Postgres: `database/migrations` (`002` a `005`)
-- Schema legado (não aplicar): `database/migrations/legacy/001_initial_schema.sql`
-- Migrações Timescale incrementais: `database/timescale/migrations`
+## Billing/Quotas
+- Planos: `starter`, `pro`, `enterprise`.
+- Ciclos: `monthly`, `annual`.
+- Defaults:
+  - `quota_devices=0` (ilimitado)
+  - `quota_msgs_per_min=360`
+  - `quota_storage_mb=1000`
+- Bloqueios:
+  - `starter/pro`: bloqueio duro ao exceder.
+  - `enterprise`: pode permitir overage se `allow_overage=true`.
 
-Comando único:
+Detalhes: `docs/BILLING_QUOTAS.md`.
+
+## Observabilidade e Telegram
+- Alertas criticos no Telegram via Alertmanager.
+- `telegram_ops_bot` com comandos:
+  - `/health`
+  - `/status`
+  - `/metrics`
+  - `/logs api|emqx|postgres|timescale|redis`
+- Eventos operacionais enviados pelo backend:
+  - `🧾 [USUARIO] Cadastro`
+  - `📟 [DEVICE] Cadastro`
+  - `🚨 [QUOTA] Evento`
+- Formato padronizado com campos em ordem fixa e horario BR.
+- Duplicidade desativada por padrao no watcher DB:
+  - `TELEGRAM_WATCH_NOTIFY_EVENTS=false` (default).
+
+Detalhes: `docs/OBSERVABILITY.md`.
+
+## Migrações
+- Postgres: `database/migrations` (`002` a `006`).
+- Timescale: `database/timescale/migrations`.
+- Legado: `database/migrations/legacy/` (nao aplicar em ambiente novo).
+
 ```bash
 ./database/migrate.sh --target all
 ```
 
-Baseline (somente registrar como já aplicado, sem executar SQL):
-```bash
-./database/migrate.sh --target all --baseline
-```
+## Resiliencia de Dados
+- Backup diario + restore drill semanal.
+- Politica de retencao/arquivamento por tenant.
+- RPO/RTO por plano (documentado).
 
-## Testes (item 1 reforçado)
-Escopo atual coberto em `go test ./...`:
-- auth: validação de email/senha, body inválido e refresh com token incorreto;
-- middleware crítico: JWT, permissões, API key curta/inválida e comportamento seguro sem panic;
-- telemetry: validações de leitura com contexto de tenant, parser de payload e utilitários;
-- rate limit Redis: limites por dispositivo/segundo e por slot/minuto (com `miniredis`).
+Detalhes: `docs/DATA_RESILIENCE.md`.
 
-Arquivos de reforço adicionados:
-- `go-api/handlers/auth_handler_test.go`
-- `go-api/handlers/ratelimiter_test.go`
-- `go-api/handlers/telemetry_utils_test.go`
+## Validacao Operacional
+- Isolamento tenant: `scripts/audit/test_tenant_isolation.sh`
+- E2E MQTT ingestao: `scripts/audit/test_e2e_mqtt_ingest.sh`
+- Security smoke: `scripts/audit/security_smoke.sh`
+- Carga basica: `scripts/audit/run_load_test.sh`
 
-Executar:
-```bash
-docker run --rm -v "$PWD/go-api":/src -w /src golang:1.22.4 sh -c "go test -p 1 ./..."
-```
-
-Observação: ainda faltam testes de integração completos para fechar 100% dos critérios do item 1 (especialmente RLS ponta a ponta e fluxos de `devices/provision|claim|secret` com banco real).
-
-## Fluxo de provisionamento (atual)
-
-### 1. Provisionamento direto (usuário autenticado)
-`POST /api/v1/devices/provision`
-- Requer JWT com `devices:provision`
-- Cria device já associado ao tenant do usuário
-- Retorna imediatamente:
-  - `tenant_id`
-  - `device_id`
-  - `device_label` (username MQTT)
-  - `device_secret` (password MQTT)
-  - `broker`
-
-### 2. Provisionamento por claim (legado, ainda suportado)
-- `POST /api/v1/devices/claim`
-- `POST /api/v1/devices/bootstrap`
-- `POST /api/v1/devices/secret`
-
-Observação: `POST /api/v1/devices/secret` é **one-time**. Se o secret expirar/não estiver mais no cache, não é reemitido automaticamente; é necessário reset + novo claim/provision.
-
-## Publicação MQTT
-Tópico esperado:
-`tenants/<tenant_id>/devices/<device_id>/telemetry/slot/<n>`
-
-Exemplo:
-```bash
-mosquitto_pub -h 192.168.0.99 -p 1883 \
-  -u "<device_label>" \
-  -P "<device_secret>" \
-  -t "tenants/<tenant_id>/devices/<device_id>/telemetry/slot/0" \
-  -m '{"value":23.5}'
-```
-
-## Segurança aplicada
-- JWT obrigatório para endpoints de usuário
-- `/api/v1/telemetry` protegido por API key
-- `/api/v1/telemetry/latest` e `/api/v1/telemetry/slots` agora exigem JWT + `telemetry:read`
-- Escopo por tenant aplicado nas consultas de leitura
-- Endpoints sensíveis com método HTTP restrito (GET/POST explícitos, `405` para método inválido)
-- Validação de tenant no tópico MQTT (tenant do tópico deve bater com tenant do device)
-- Rate limit de auth resiliente a Redis indisponível (sem panic)
-- Validação defensiva de API key curta (sem panic)
-- Seletores de leitura de telemetria sem ambiguidade: aceitar **apenas um** entre `device_id` e `device_label`
-- Quotas por tenant aplicadas no backend (devices, msg/min por device e storage), com bloqueio duro para starter/pro.
-
-## Endpoints principais
-- Auth:
-  - `POST /api/v1/auth/register`
-  - `POST /api/v1/auth/login`
-  - `POST /api/v1/auth/refresh`
-- Devices:
-  - `GET /api/v1/devices`
-  - `POST /api/v1/devices/provision`
-  - `POST /api/v1/devices/claim`
-  - `POST /api/v1/devices/reset`
-- Device bootstrap/secret:
-  - `POST /api/v1/devices/bootstrap`
-  - `POST /api/v1/devices/secret`
-- Telemetry:
-  - `POST /api/v1/telemetry`
-  - `GET /api/v1/telemetry/latest`
-  - `GET /api/v1/telemetry/slots`
-- Tenants (super_admin):
-  - `GET /api/v1/tenants/{tenant_id}/quotas`
-  - `PATCH /api/v1/tenants/{tenant_id}/quotas`
-  - `GET /api/v1/tenants/{tenant_id}/usage`
-
-Compatibilidade temporária:
-- Prefixo legado `/api/*` ainda disponível durante transição para `/api/v1/*`.
-
-## Observabilidade
-- Health:
-  - `GET /health`
-  - `GET /health/live`
-  - `GET /health/ready`
-- Metrics:
-  - `GET /metrics`
-- Stack:
-  - `prometheus` (coleta + regras de alerta)
-  - `blackbox_exporter` (probe HTTP dos health endpoints)
-  - `alertmanager` (roteamento de alertas por webhook)
-  - `grafana` (dashboards provisionados)
-
-Configuração detalhada:
-- `docs/OBSERVABILITY.md`
-
-## Banco e isolamento
-- Postgres: dados de tenant/users/devices
-- Timescale: telemetria com `tenant_id`
-- Leituras de telemetria via API respeitam tenant do JWT
-
-## Referências
-- Histórico de mudanças: `CHANGELOG.md`
-- Contrato REST: `docs/openapi.yaml`
-- Roadmap técnico P0-P2: `docs/ROADMAP_P0_P2.md`
-- Observabilidade (monitoramento/alertas): `docs/OBSERVABILITY.md`
-- SLO/SLI por serviço: `docs/SLO_SLI.md`
-- Runbooks operacionais: `docs/RUNBOOKS.md`
-- Validação mínima para produção/auditoria: `docs/PRODUCTION_VALIDATION.md`
-- Resiliência de dados (backup/restore, retenção, RPO/RTO): `docs/DATA_RESILIENCE.md`
-- Billing e quotas por tenant: `docs/BILLING_QUOTAS.md`
+## Referencias
+- Contrato API: `docs/openapi.yaml`
+- Changelog: `CHANGELOG.md`
+- SLO/SLI: `docs/SLO_SLI.md`
+- Runbooks: `docs/RUNBOOKS.md`
+- Validacao para producao: `docs/PRODUCTION_VALIDATION.md`
