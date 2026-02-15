@@ -5,6 +5,12 @@ info:
   description: |
     API do backend da plataforma IIoT.
     Esta especificacao documenta endpoints atuais (auth, devices, telemetry).
+
+    Fluxo rapido (consumo para frontend/integrador):
+    1. Registrar ou logar em `/api/v1/auth/*` para obter JWT.
+    2. Provisionar device com `POST /api/v1/devices/provision`.
+    3. Publicar MQTT no topico `tenants/{tenant_id}/devices/{device_id}/telemetry/slot/{n}`.
+    4. Ler ultimo valor com `GET /api/v1/telemetry/latest`.
 servers:
   - url: http://localhost:3001
     description: Core API host
@@ -21,10 +27,12 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: "Use Authorization header: Bearer <access_token>."
     apiKeyAuth:
       type: http
       scheme: bearer
       bearerFormat: API_KEY
+      description: "Use Authorization header: Bearer <EMQX_WEBHOOK_API_KEY>."
   schemas:
     ErrorResponse:
       type: object
@@ -69,23 +77,34 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8, example: "Abcdef1!" }
+      example:
+        email: "cliente@empresa.com"
+        password: "Abcdef1!"
     LoginRequest:
       type: object
       required: [email, password]
       properties:
         email: { type: string, format: email }
         password: { type: string }
+      example:
+        email: "cliente@empresa.com"
+        password: "Abcdef1!"
     RefreshRequest:
       type: object
       required: [refresh_token]
       properties:
         refresh_token: { type: string }
+      example:
+        refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     ClaimRequest:
       type: object
       required: [device_id, claim_code]
       properties:
         device_id: { type: string, format: uuid }
         claim_code: { type: string }
+      example:
+        device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+        claim_code: "58F59234EFF0"
     ClaimResponse:
       type: object
       properties:
@@ -95,6 +114,8 @@ components:
       type: object
       properties:
         device_label: { type: string, maxLength: 50, example: "esp32-s3-linha-a-01" }
+      example:
+        device_label: "esp32-s3-linha-a-01"
     ProvisionResponse:
       type: object
       properties:
@@ -158,6 +179,12 @@ components:
           type: object
           example: { "value": 23.5 }
         timestamp: { type: string }
+      example:
+        clientid: "esp32-s3-linha-a-01"
+        topic: "tenants/83409caf-43f8-40b3-8ffe-32b8f0c16a94/devices/e5ea1245-124e-4066-8bf8-26c038714729/telemetry/slot/0"
+        payload:
+          value: 23.5
+        timestamp: "2026-02-15T00:00:00Z"
     TelemetryWebhookResponse:
       type: object
       properties:
@@ -171,6 +198,12 @@ components:
         slot: { type: integer }
         value: { type: object }
         timestamp: { type: string, format: date-time }
+      example:
+        device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+        slot: 0
+        value:
+          value: 23.5
+        timestamp: "2026-02-15T00:00:00Z"
     ActiveSlotsResponse:
       type: object
       properties:
@@ -242,6 +275,7 @@ paths:
   /api/v1/auth/register:
     post:
       tags: [Auth]
+      operationId: authRegister
       summary: Register user (creates tenant automatically)
       description: |
         First user becomes super_admin. Subsequent users get their own tenant as tenant_admin.
@@ -251,17 +285,42 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/RegisterRequest" }
+            examples:
+              tenant_admin:
+                summary: Cadastro de novo cliente
+                value:
+                  email: "cliente@empresa.com"
+                  password: "Abcdef1!"
       responses:
         "201":
           description: Created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuthResponse" }
+              examples:
+                created:
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    expires_in: 3600
+                    user:
+                      user_id: "50f4ab20-198a-4d31-822b-36677d22a018"
+                      tenant_id: "83409caf-43f8-40b3-8ffe-32b8f0c16a94"
+                      email: "cliente@empresa.com"
+                      role: "tenant_admin"
+                      status: "active"
+                      created_at: "2026-02-15T00:00:00Z"
         "400":
           description: Invalid input (email format, password strength)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                weak_password:
+                  value:
+                    code: "bad_request"
+                    message: "Password must have at least 8 characters, uppercase, lowercase, number, and special character"
+                    request_id: "3d2da108-2573-4d7d-b3f6-8bf1a16cf9fd"
         "409":
           description: Email already registered
           content:
@@ -271,18 +330,37 @@ paths:
   /api/v1/auth/login:
     post:
       tags: [Auth]
+      operationId: authLogin
       summary: Login
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/LoginRequest" }
+            examples:
+              login:
+                value:
+                  email: "cliente@empresa.com"
+                  password: "Abcdef1!"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuthResponse" }
+              examples:
+                ok:
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    expires_in: 3600
+                    user:
+                      user_id: "50f4ab20-198a-4d31-822b-36677d22a018"
+                      tenant_id: "83409caf-43f8-40b3-8ffe-32b8f0c16a94"
+                      email: "cliente@empresa.com"
+                      role: "tenant_admin"
+                      status: "active"
+                      created_at: "2026-02-15T00:00:00Z"
         "401":
           description: Invalid credentials
           content:
@@ -297,6 +375,7 @@ paths:
   /api/v1/auth/refresh:
     post:
       tags: [Auth]
+      operationId: authRefresh
       summary: Refresh tokens (rotation with blacklist)
       description: |
         Issues new access + refresh tokens. Old refresh token is blacklisted (one-time use).
@@ -306,12 +385,22 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/RefreshRequest" }
+            examples:
+              refresh:
+                value:
+                  refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RefreshResponse" }
+              examples:
+                rotated:
+                  value:
+                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    expires_in: 3600
         "401":
           description: Invalid or already-used refresh token
           content:
@@ -331,6 +420,7 @@ paths:
   /api/v1/devices:
     get:
       tags: [Devices]
+      operationId: listDevices
       summary: List devices for current tenant
       description: |
         Returns all devices belonging to the authenticated user's tenant.
@@ -345,6 +435,15 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/DeviceSummary" }
+              examples:
+                devices:
+                  value:
+                    - device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                      device_label: "esp32-s3-linha-a-01"
+                      status: "active"
+                      firmware_version: "1.0.3"
+                      last_seen_at: "2026-02-15T00:01:10Z"
+                      created_at: "2026-02-14T23:58:00Z"
         "401":
           description: Unauthorized
           content:
@@ -359,6 +458,7 @@ paths:
   /api/v1/devices/claim:
     post:
       tags: [Devices]
+      operationId: claimDevice
       summary: Claim device (assign to tenant)
       description: |
         Validates claim_code against bcrypt hash. Generates device_secret (cached in Redis 5min for one-time retrieval).
@@ -370,12 +470,22 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/ClaimRequest" }
+            examples:
+              claim:
+                value:
+                  device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                  claim_code: "58F59234EFF0"
       responses:
         "200":
           description: Device claimed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ClaimResponse" }
+              examples:
+                ok:
+                  value:
+                    device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                    message: "Device claimed successfully. Device can now retrieve secret."
         "401":
           description: Invalid claim code or unauthorized
           content:
@@ -395,6 +505,7 @@ paths:
   /api/v1/devices/provision:
     post:
       tags: [Devices]
+      operationId: provisionDevice
       summary: Direct device provisioning (authenticated user)
       description: |
         Creates a new claimed device for the current tenant and returns MQTT credentials.
@@ -407,12 +518,27 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/ProvisionRequest" }
+            examples:
+              with_label:
+                value:
+                  device_label: "esp32-s3-linha-a-01"
+              auto_label:
+                summary: Sem payload (backend gera device_label)
+                value: {}
       responses:
         "201":
           description: Device created and credentials issued
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProvisionResponse" }
+              examples:
+                created:
+                  value:
+                    tenant_id: "83409caf-43f8-40b3-8ffe-32b8f0c16a94"
+                    device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                    device_label: "esp32-s3-linha-a-01"
+                    device_secret: "0c25828d0f9aaf398f2a087e970a36ac062375ddd2e007697a2fdbb32994fb07"
+                    broker: "192.168.0.99:1883"
         "400":
           description: Invalid payload
           content:
@@ -437,6 +563,7 @@ paths:
   /api/v1/devices/bootstrap:
     post:
       tags: [Devices]
+      operationId: deviceBootstrap
       summary: Device bootstrap (HMAC polling)
       description: |
         Device polls this endpoint to check its status. Signature is HMAC-SHA256(MANUFACTURING_MASTER_KEY, device_id:timestamp).
@@ -446,6 +573,12 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/BootstrapRequest" }
+            examples:
+              bootstrap:
+                value:
+                  device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                  timestamp: "2026-02-15T00:00:00Z"
+                  signature: "6a4e14ccbf2f2e7a6b1b2f0f3128eec3fd58fe29b741e0f7432a3f7d8b14d055"
       responses:
         "200":
           description: OK
@@ -466,6 +599,7 @@ paths:
   /api/v1/devices/secret:
     post:
       tags: [Devices]
+      operationId: deviceSecret
       summary: Device secret retrieval (HMAC, one-time)
       description: |
         Returns device_secret for MQTT authentication only once.
@@ -475,12 +609,23 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/SecretRequest" }
+            examples:
+              secret:
+                value:
+                  device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                  timestamp: "2026-02-15T00:00:00Z"
+                  signature: "6a4e14ccbf2f2e7a6b1b2f0f3128eec3fd58fe29b741e0f7432a3f7d8b14d055"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SecretResponse" }
+              examples:
+                one_time:
+                  value:
+                    device_secret: "0c25828d0f9aaf398f2a087e970a36ac062375ddd2e007697a2fdbb32994fb07"
+                    expires_at: "2026-02-15T00:05:00Z"
         "401":
           description: Invalid HMAC signature or timestamp
           content:
@@ -505,9 +650,10 @@ paths:
   /api/v1/devices/reset:
     post:
       tags: [Devices]
+      operationId: resetDevice
       summary: Reset device to unclaimed
       description: |
-        Resets device status, clears tenant/owner/secrets. Requires JWT with `devices:write` permission.
+        Resets device status, clears tenant/owner/secrets. Requires JWT with `devices:provision` permission.
         tenant_admin/super_admin can reset any device in their tenant; tenant_user only their own.
       security:
         - bearerAuth: []
@@ -516,6 +662,11 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/ResetRequest" }
+            examples:
+              reset:
+                value:
+                  device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                  confirmation: "RESET"
       responses:
         "200":
           description: OK
@@ -536,10 +687,12 @@ paths:
   /api/v1/telemetry:
     post:
       tags: [Telemetry]
+      operationId: ingestTelemetry
       summary: Telemetry webhook (EMQX Rule Engine)
       description: |
         Receives telemetry from EMQX Rule Engine. Validates device, applies rate limiting,
         persists to TimescaleDB (with RLS), updates Redis cache, and marks device as active.
+        This endpoint is service-to-service and expects API key in Authorization header.
       security:
         - apiKeyAuth: []
       requestBody:
@@ -547,12 +700,26 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/TelemetryWebhookRequest" }
+            examples:
+              emqx_webhook:
+                value:
+                  clientid: "esp32-s3-linha-a-01"
+                  topic: "tenants/83409caf-43f8-40b3-8ffe-32b8f0c16a94/devices/e5ea1245-124e-4066-8bf8-26c038714729/telemetry/slot/0"
+                  payload:
+                    value: 23.5
+                  timestamp: "2026-02-15T00:00:00Z"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TelemetryWebhookResponse" }
+              examples:
+                ingested:
+                  value:
+                    success: true
+                    device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                    slot: 0
         "400":
           description: Invalid JSON, topic format, or timestamp
           content:
@@ -587,6 +754,7 @@ paths:
   /api/v1/telemetry/latest:
     get:
       tags: [Telemetry]
+      operationId: getLatestTelemetry
       summary: Latest telemetry from Redis cache
       description: |
         Returns the most recent cached value for a device/slot scoped to the authenticated tenant.
@@ -599,20 +767,31 @@ paths:
           name: device_id
           schema: { type: string, format: uuid }
           required: false
+          example: "e5ea1245-124e-4066-8bf8-26c038714729"
         - in: query
           name: device_label
           schema: { type: string }
           required: false
+          example: "esp32-s3-linha-a-01"
         - in: query
           name: slot
           schema: { type: integer }
           required: true
+          example: 0
       responses:
         "200":
           description: OK (returns empty object {} if no cache)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LatestTelemetry" }
+              examples:
+                latest:
+                  value:
+                    device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                    slot: 0
+                    value:
+                      value: 23.5
+                    timestamp: "2026-02-15T00:00:00Z"
         "400":
           description: Missing slot/device selector or ambiguous selector (both device_id and device_label)
           content:
@@ -647,6 +826,7 @@ paths:
   /api/v1/telemetry/slots:
     get:
       tags: [Telemetry]
+      operationId: getActiveSlots
       summary: Active slots from Redis cache
       description: |
         Returns sorted list of slot numbers that have cached latest values,
@@ -659,16 +839,23 @@ paths:
           name: device_id
           schema: { type: string, format: uuid }
           required: false
+          example: "e5ea1245-124e-4066-8bf8-26c038714729"
         - in: query
           name: device_label
           schema: { type: string }
           required: false
+          example: "esp32-s3-linha-a-01"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ActiveSlotsResponse" }
+              examples:
+                slots:
+                  value:
+                    device_id: "e5ea1245-124e-4066-8bf8-26c038714729"
+                    slots: [0, 7, 100]
         "400":
           description: Missing device selector or ambiguous selector (both device_id and device_label)
           content:
@@ -703,6 +890,7 @@ paths:
   /api/v1/tenants/{tenant_id}/quotas:
     get:
       tags: [Tenants]
+      operationId: getTenantQuotas
       summary: Get tenant quotas (super admin)
       security:
         - bearerAuth: []
@@ -717,6 +905,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TenantQuotas" }
+              examples:
+                quotas:
+                  value:
+                    tenant_id: "83409caf-43f8-40b3-8ffe-32b8f0c16a94"
+                    plan_type: "starter"
+                    billing_cycle: "monthly"
+                    quota_devices: 0
+                    quota_msgs_per_min: 360
+                    quota_storage_mb: 1000
+                    allow_overage: false
         "401":
           description: Unauthorized
           content:
@@ -734,6 +932,7 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
     patch:
       tags: [Tenants]
+      operationId: patchTenantQuotas
       summary: Update tenant quotas/plan/billing cycle (super admin)
       security:
         - bearerAuth: []
@@ -747,6 +946,15 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/TenantQuotaPatchRequest" }
+            examples:
+              upgrade_to_pro:
+                value:
+                  plan_type: "pro"
+                  billing_cycle: "monthly"
+                  quota_devices: 100
+                  quota_msgs_per_min: 360
+                  quota_storage_mb: 5000
+                  allow_overage: false
       responses:
         "200":
           description: Updated
@@ -772,6 +980,7 @@ paths:
   /api/v1/tenants/{tenant_id}/usage:
     get:
       tags: [Tenants]
+      operationId: getTenantUsage
       summary: Get tenant usage snapshot (super admin)
       security:
         - bearerAuth: []
@@ -786,6 +995,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TenantUsage" }
+              examples:
+                usage:
+                  value:
+                    tenant_id: "83409caf-43f8-40b3-8ffe-32b8f0c16a94"
+                    messages_last_60min: 1240
+                    devices_total: 12
+                    storage_mb_estimated: 423.88
+                    plan_type: "starter"
+                    billing_cycle: "monthly"
         "401":
           description: Unauthorized
           content:
